@@ -34,6 +34,7 @@ const DEFAULT_CODES = {
   catherine: "CATH2026", // CRM & Trésorerie (Catherine)
   planning: "AGENDA2026", // Mon Planning (CEO)
   admin: "ADMIN2026",   // Administration — accès total
+  reset: "RESET2026",   // Confirmation supplémentaire pour tout réinitialiser
 };
 function autoCode(name) {
   const base = (name || "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z]/g, "").slice(0, 6) || "MEMBRE";
@@ -2080,7 +2081,9 @@ function TabAdministration({ team, setTeam, codes, setCodes, onResetAll, agency,
   const [codesSaved, setCodesSaved] = useState(false);
   const [agencyForm, setAgencyForm] = useState(agency);
   const [agencySaved, setAgencySaved] = useState(false);
-  const [resetConfirm, setResetConfirm] = useState(false);
+  const [resetStep, setResetStep] = useState(false);
+  const [resetCodeInput, setResetCodeInput] = useState("");
+  const [resetError, setResetError] = useState(false);
   const [resetDone, setResetDone] = useState(false);
 
   function addMember() {
@@ -2117,8 +2120,11 @@ function TabAdministration({ team, setTeam, codes, setCodes, onResetAll, agency,
     setTimeout(() => setAgencySaved(false), 2000);
   }
   function confirmReset() {
+    if (resetCodeInput !== codes.reset) { setResetError(true); return; }
     onResetAll();
-    setResetConfirm(false);
+    setResetStep(false);
+    setResetCodeInput("");
+    setResetError(false);
     setResetDone(true);
     setTimeout(() => setResetDone(false), 2500);
   }
@@ -2208,6 +2214,9 @@ function TabAdministration({ team, setTeam, codes, setCodes, onResetAll, agency,
             <label style={{ color: C.muted }}>Administration (cette section)
               <input value={codesForm.admin} onChange={e => setCodesForm({ ...codesForm, admin: e.target.value.toUpperCase() })} style={{ ...inputStyle, marginTop: 4 }} />
             </label>
+            <label style={{ color: C.muted }}>Réinitialisation totale (zone dangereuse — garde-le pour toi seul)
+              <input value={codesForm.reset} onChange={e => setCodesForm({ ...codesForm, reset: e.target.value.toUpperCase() })} style={{ ...inputStyle, marginTop: 4 }} />
+            </label>
           </div>
           <button onClick={saveCodes} style={{ ...btnGold, marginTop: 10 }}><Save size={14} /> {codesSaved ? "Enregistré ✓" : "Enregistrer les codes"}</button>
           <div style={{ color: C.muted, fontSize: 11, marginTop: 10 }}>Chaque code est indépendant : connaître l'un ne donne accès à aucun autre. Les codes personnels de checklist se modifient individuellement ci-dessus, dans la fiche de chaque membre.</div>
@@ -2243,16 +2252,23 @@ function TabAdministration({ team, setTeam, codes, setCodes, onResetAll, agency,
         <H2>Zone dangereuse</H2>
         <Card style={{ borderColor: C.rust }}>
           <Eyebrow>Réinitialiser toutes les données</Eyebrow>
-          <div style={{ fontSize: 12.5, color: C.muted, marginTop: 4 }}>Efface tous les clients, dépenses, dettes, prospections, tâches Kanban, coches de checklist, disponibilités et liens — remet l'objectif à 250 000 FCFA. L'équipe et les codes d'accès ne sont pas touchés. Action irréversible.</div>
-          {!resetConfirm ? (
-            <button onClick={() => setResetConfirm(true)} style={{ ...iconBtn, marginTop: 10, color: C.rustLight, borderColor: C.rust, padding: "8px 12px" }}>
+          <div style={{ fontSize: 12.5, color: C.muted, marginTop: 4 }}>Efface tous les clients, dépenses, dettes, prospections, tâches Kanban, coches de checklist, disponibilités, devis et liens — remet l'objectif à 250 000 FCFA. L'équipe et les codes d'accès ne sont pas touchés. Action irréversible.</div>
+          {!resetStep ? (
+            <button onClick={() => setResetStep(true)} style={{ ...iconBtn, marginTop: 10, color: C.rustLight, borderColor: C.rust, padding: "8px 12px" }}>
               <RefreshCw size={13} /> Tout réinitialiser
             </button>
           ) : (
-            <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center" }}>
-              <span style={{ fontSize: 12, color: C.rustLight, fontWeight: 700 }}>Confirmer ?</span>
-              <button onClick={confirmReset} style={{ ...btnGold, width: "auto", padding: "8px 14px", background: C.rust, color: C.white }}>Oui, tout effacer</button>
-              <button onClick={() => setResetConfirm(false)} style={iconBtn}>Annuler</button>
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: 12, color: C.rustLight, fontWeight: 700, marginBottom: 6 }}>Ce code est différent du code Administration — confirme pour continuer :</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <input type="password" placeholder="Code de réinitialisation" value={resetCodeInput}
+                  onChange={e => { setResetCodeInput(e.target.value); setResetError(false); }}
+                  onKeyDown={e => { if (e.key === "Enter") confirmReset(); }}
+                  style={{ ...inputStyle, width: 170 }} />
+                <button onClick={confirmReset} style={{ ...btnGold, width: "auto", padding: "8px 14px", background: C.rust, color: C.white }}>Oui, tout effacer</button>
+                <button onClick={() => { setResetStep(false); setResetCodeInput(""); setResetError(false); }} style={iconBtn}>Annuler</button>
+              </div>
+              {resetError && <div style={{ color: C.rustLight, fontSize: 11, marginTop: 6 }}>Code incorrect.</div>}
             </div>
           )}
           {resetDone && <div style={{ fontSize: 12, color: C.greenLight, marginTop: 8 }}>✓ Données réinitialisées.</div>}
