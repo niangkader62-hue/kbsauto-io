@@ -8,7 +8,7 @@ import {
   CheckCircle2, Circle, RotateCcw, TrendingUp, Banknote, Flame, GraduationCap,
   Award, TrendingDown, Lock, LogOut, CalendarClock, Send, History, FileText,
   Shield, UserPlus, AlertTriangle, Search, Copy, Radar, CalendarCheck,
-  Pencil, Save, KeyRound, RefreshCw, X
+  Pencil, Save, KeyRound, RefreshCw, X, MapPin
 } from "lucide-react";
 
 /* ---------------------------------- SUPABASE ---------------------------------- */
@@ -177,6 +177,163 @@ const METHODE_PROSPECTION = [
   "Convertir l'audit gratuit en proposition d'un Pack adapté à son besoin.",
 ];
 
+/* ---------------------------------- PROSPECTION TERRAIN (entreprises physiques) ---------------------------------- */
+const METHODE_TERRAIN = [
+  { titre: "Avant la visite — Préparer son terrain", points: [
+    "Repérer des commerces à fort potentiel : bonne fréquentation, activité active, mais visibilité en ligne faible ou nulle.",
+    "Avoir sur soi : le portefeuille de preuves (captures, exemples), la grille tarifaire, des devis vierges, une carte de visite.",
+    "Fixer un objectif clair pour la visite : obtenir un rendez-vous, présenter, ou closer directement.",
+  ]},
+  { titre: "Les 30 premières secondes — L'accroche", points: [
+    "Se présenter brièvement : prénom + KBS Digital Agency + une phrase d'impact, pas un discours.",
+    "Complimenter un détail réel et précis du commerce — jamais une phrase générique.",
+    "Poser une seule question ouverte qui montre un intérêt sincère pour leur activité, pas une intention de vendre.",
+  ]},
+  { titre: "Découverte — Comprendre avant de proposer", points: [
+    "Comment trouvez-vous vos clients aujourd'hui ?",
+    "Avez-vous déjà essayé le digital (réseaux sociaux, site, publicité) ? Qu'est-ce qui a marché ou pas ?",
+    "Quel est votre plus gros frein : le temps, le budget, ou le manque de compétence technique ?",
+    "Toujours reformuler leur besoin avec leurs propres mots avant de proposer quoi que ce soit.",
+  ]},
+  { titre: "Présentation — Relier le service à LEUR problème", points: [
+    "Ne jamais réciter tout le catalogue : choisir un seul service qui répond exactement à ce qu'ils viennent de dire.",
+    "Montrer le portefeuille concret de ce service précis (voir la fiche de chaque service ci-dessous).",
+    "Donner un chiffre ou un résultat concret quand c'est possible plutôt qu'une promesse vague.",
+  ]},
+  { titre: "Gestion des objections", points: [
+    "Ne jamais argumenter contre le client — valider son point, puis répondre.",
+    "Structure simple : \"Je comprends... beaucoup de nos clients pensaient pareil... voici ce qu'on a fait pour eux...\"",
+    "Voir l'objection fréquente et la réponse préparée pour chaque service ci-dessous.",
+  ]},
+  { titre: "Closing — Conclure", points: [
+    "Poser une question de closing simple et directe : \"On démarre cette semaine ou la semaine prochaine ?\"",
+    "Toujours repartir avec quelque chose de concret : un acompte, une signature, ou au minimum un rendez-vous daté.",
+    "Utiliser le devis PDF professionnel pour formaliser l'offre immédiatement sur place.",
+  ]},
+  { titre: "Après la vente — Fidéliser et faire grandir", points: [
+    "Envoyer le reçu PDF professionnel immédiatement après paiement — ça renforce le sérieux de l'agence.",
+    "Demander un avis Google ou un témoignage dès le premier résultat visible.",
+    "Programmer une relance pour proposer une évolution vers un pack supérieur (upsell).",
+  ]},
+];
+
+/* Chaque entrée : cible = type de commerce idéal, portfolio = preuves concrètes à montrer,
+   accroche = phrase d'ouverture spécifique, objection = frein fréquent, reponse = réponse préparée.
+   Les Packs 3 et 4 ont un "script" complet étape par étape en plus (offres phares). */
+const PROSPECTION_GUIDE = {
+  "Formations & Coaching": [
+    { name: "Formation Alibaba", cible: "Commerçants vendant des produits importés (vêtements, électronique, cosmétiques, accessoires)",
+      portfolio: "Captures de commandes Alibaba réussies, calcul de marge achat/revente, témoignage d'un élève qui importe déjà",
+      accroche: "Vous vendez déjà ce type de produit ici — savez-vous que vous pourriez l'acheter 3 à 5 fois moins cher en direct ?",
+      objection: "Je n'ai pas le temps d'apprendre ça.",
+      reponse: "La formation présentielle dure 2h, on la programme à votre convenance, et votre premier import rembourse largement l'investissement." },
+    { name: "Formation E-commerce", cible: "Commerçants avec des produits physiques mais aucune présence en ligne",
+      portfolio: "Exemple de boutique en ligne montée pour un client + captures des commandes reçues",
+      accroche: "Vos produits sont visibles uniquement ici en boutique, ou aussi en ligne ?",
+      objection: "Le e-commerce c'est compliqué pour moi.",
+      reponse: "On démarre avec 3 produits seulement : en 48h vous avez votre première page en ligne, pas besoin d'être informaticien." },
+    { name: "Intelligence Artificielle (IA)", cible: "Tout commerçant ou PME qui perd du temps sur des tâches répétitives",
+      portfolio: "Démonstration en direct sur le téléphone : générer un post ou une réponse client en 30 secondes",
+      accroche: "Combien de temps passez-vous chaque jour à écrire vos publications ou répondre aux mêmes questions ?",
+      objection: "L'IA c'est réservé aux grandes entreprises.",
+      reponse: "Je vous montre maintenant, sur votre propre produit, en 1 minute — vous jugez par vous-même." },
+    { name: "Montage vidéo CapCut", cible: "Restaurants, salons de beauté, boutiques avec des produits visuels",
+      portfolio: "Vidéo brute vs vidéo montée (avant/après), captures des vues obtenues",
+      accroche: "Vos vidéos ont l'air professionnelles, ou filmées à la va-vite ?",
+      objection: "Je n'ai pas de contenu à filmer.",
+      reponse: "On filme ensemble 15 minutes sur place pendant la formation, avec ce que vous avez déjà." },
+    { name: "Campagne publicitaire (Meta/TikTok)", cible: "Commerces à forte demande locale : restaurants, boutiques, événements",
+      portfolio: "Capture d'une campagne gérée avec ses résultats (impressions, clics, coût par résultat)",
+      accroche: "Avez-vous déjà boosté une publication, ou vous ne savez pas par où commencer ?",
+      objection: "La publicité en ligne coûte cher.",
+      reponse: "On teste avec un petit budget, 5 000 à 10 000 FCFA par jour, pour voir les résultats avant d'investir plus." },
+    { name: "Formation au Closing", cible: "Boutiques ou PME avec une équipe de vente (vendeurs, accueil)",
+      portfolio: "Script de vente utilisé + témoignage d'une équipe déjà formée",
+      accroche: "Vos vendeurs concluent facilement, ou perdez-vous des clients au dernier moment ?",
+      objection: "Mes vendeurs savent déjà vendre.",
+      reponse: "Proposez un audit gratuit de 10 minutes sur une vraie situation de vente — ça révèle souvent des points invisibles de l'intérieur." },
+  ],
+  "Prestations techniques & créatives": [
+    { name: "Création de page de vente", cible: "Tout commerce qui fait de la publicité ou reçoit du trafic sans page dédiée",
+      portfolio: "2 à 3 pages de vente déjà réalisées (à montrer sur tablette/téléphone), taux de conversion si connu",
+      accroche: "Quand quelqu'un clique sur votre publicité ou cherche votre offre, où atterrit-il ?",
+      objection: "J'ai déjà une page Facebook.",
+      reponse: "Une page Facebook informe ; une page de vente est conçue pour transformer un visiteur en client — ce n'est pas le même outil." },
+    { name: "Création de site web dynamique", cible: "PME et entreprises de services établies (cabinets, agences, sociétés structurées)",
+      portfolio: "2 à 3 sites réalisés, et KBSAuto.io lui-même comme preuve vivante du savoir-faire technique",
+      accroche: "Si un client tape le nom de votre entreprise sur Google aujourd'hui, que trouve-t-il ?",
+      objection: "C'est un investissement important.",
+      reponse: "Détaillez ce qui est inclus (design, hébergement, mises à jour) et comparez au coût d'un client perdu faute de visibilité en ligne." },
+    { name: "Community Management", cible: "Restaurants, boutiques, salons — tout commerce dont la clientèle utilise les réseaux sociaux",
+      portfolio: "Avant/après d'une page gérée (fréquence de publication, engagement) + calendrier de contenu type",
+      accroche: "Qui s'occupe de vos réseaux sociaux en ce moment ?",
+      objection: "Je peux le faire moi-même.",
+      reponse: "Montrez le temps réel que ça demande (recherche, création, publication, réponses) et la différence de régularité avec un professionnel dédié." },
+    { name: "Création de SaaS / Application", cible: "PME structurées avec un besoin de gestion interne (stocks, rendez-vous, clients)",
+      portfolio: "KBSAuto.io comme démonstration concrète et vivante du savoir-faire technique de l'agence",
+      accroche: "Comment gérez-vous vos rendez-vous, vos stocks ou vos clients aujourd'hui — sur papier, Excel, ou un outil dédié ?",
+      objection: "C'est un très gros investissement.",
+      reponse: "Proposez un cahier des charges gratuit et un devis détaillé avant tout engagement — aucune surprise sur le prix final." },
+  ],
+  "Packs stratégiques": [
+    { name: "Pack 1 : Formation + Vente", cible: "Débutants qui veulent se lancer dans la vente en ligne",
+      portfolio: "Parcours d'un élève passé de 0 à ses premières ventes",
+      accroche: "Vous voulez vendre en ligne mais vous ne savez pas par où commencer ?",
+      objection: "Je préfère apprendre gratuitement sur YouTube.",
+      reponse: "YouTube donne des bouts d'information épars ; ici vous avez un parcours structuré et un accompagnement jusqu'à votre première vente." },
+    { name: "Pack 2 : Lancement Produit", cible: "Commerces qui préparent un nouveau produit ou une nouvelle offre",
+      portfolio: "Exemple d'un lancement réussi : teaser, jour J, résultats obtenus",
+      accroche: "Vous avez un nouveau produit ou service à annoncer bientôt ?",
+      objection: "On peut gérer le lancement nous-mêmes.",
+      reponse: "Proposez de gérer ce lancement comme un test — le résultat parlera de lui-même pour la suite de la collaboration." },
+    { name: "Pack 3 : Visibilité (Mensuel)", cible: "Tout commerce physique actif, bien fréquenté sur place, mais invisible en ligne",
+      portfolio: "Avant/après d'une page gérée par KBS (posts, engagement, avis clients)",
+      accroche: "Votre boutique est bien fréquentée ici — avez-vous autant de visibilité en ligne ?",
+      objection: "C'est cher pour un abonnement mensuel.",
+      reponse: "Comparez au coût d'un employé à temps plein pour faire pareil, ou au coût des clients perdus chaque mois faute de visibilité.",
+      script: [
+        "Repérage : commerce avec bonne fréquentation physique mais page Facebook abandonnée, pas d'avis Google, pas de site.",
+        "Ouverture : se présenter, complimenter un détail réel, puis \"Je vois que votre boutique est bien fréquentée ici — avez-vous autant de visibilité en ligne ?\"",
+        "Découverte : \"Qui gère vos réseaux sociaux aujourd'hui ?\" / \"Combien de clients pensez-vous perdre parce qu'ils ne vous trouvent pas en ligne ?\"",
+        "Présentation : montrer le portefeuille avant/après, présenter le Pack comme une solution mensuelle tout-en-un à prix fixe.",
+        "Preuve chiffrée : \"Nos clients en Pack Visibilité voient en moyenne plus de messages et d'appels en 4 à 6 semaines.\"",
+        "Objection prix : comparer au coût d'un salarié dédié ou aux clients perdus chaque mois.",
+        "Closing : \"On peut démarrer cette semaine avec votre premier mois — je prends vos informations et on programme le premier contenu maintenant ?\"",
+        "Après-vente : envoyer le reçu PDF immédiatement, planifier un bilan à 30 jours, proposer une évolution vers le Pack 4.",
+      ] },
+    { name: "Pack 4 : Présence Pro", cible: "PME ou commerce structuré voulant une image professionnelle complète (souvent après le Pack 3)",
+      portfolio: "Exemples de PME dont l'image a été transformée, captures avant/après",
+      accroche: "Vous avez une belle activité ici — votre image en ligne reflète-t-elle vraiment ce niveau de professionnalisme ?",
+      objection: "On a déjà quelqu'un en interne qui s'en occupe un peu.",
+      reponse: "Ce pack ne remplace pas forcément cette personne : il structure et professionnalise ce qui est fait aujourd'hui de façon informelle.",
+      script: [
+        "Repérage : entreprises à l'activité stable qui veulent professionnaliser leur image globale, souvent après un premier contact via le Pack 3.",
+        "Ouverture : \"Vous avez une belle activité ici — est-ce que votre image en ligne reflète vraiment ce niveau de professionnalisme ?\"",
+        "Découverte : \"Avez-vous un site web ? Une charte visuelle cohérente ? Des avis clients visibles ?\"",
+        "Présentation : positionner le Pack 4 comme la solution complète — présence gérée + visuels professionnels + suivi stratégique mensuel.",
+        "Preuve : montrer des exemples de PME transformées, avec captures avant/après à l'appui.",
+        "Objection : rassurer sur la complémentarité avec l'existant plutôt que le remplacement.",
+        "Closing : proposer un premier mois d'essai avec des livrables clairs, faire valider avec un devis PDF professionnel.",
+        "Après-vente : suivi mensuel avec bilan chiffré, proposition d'évolution vers les packs techniques (site web, SaaS).",
+      ] },
+    { name: "Pack 5 : Conversion & Ventes", cible: "Commerces qui ont du trafic ou des contacts mais peu de ventes concrètes",
+      portfolio: "Exemple d'entonnoir de vente (page + relance + closing) avec résultats obtenus",
+      accroche: "Vous avez des visiteurs ou des contacts, mais peu de ventes concrètes ?",
+      objection: "On a déjà des clients, ça suffit.",
+      reponse: "Ce pack sert à vendre plus aux mêmes contacts, pas seulement à en trouver de nouveaux — on augmente le volume et la fréquence d'achat." },
+    { name: "Pack 6 : IA & Automatisation", cible: "Commerces qui reçoivent beaucoup de messages clients répétitifs (WhatsApp, réseaux sociaux)",
+      portfolio: "Exemple de réponse automatique WhatsApp + temps gagné chiffré",
+      accroche: "Combien de messages clients recevez-vous par jour, et qui y répond ?",
+      objection: "Je préfère répondre moi-même, c'est plus humain.",
+      reponse: "L'automatisation gère les questions répétitives (horaires, prix, disponibilité) — vous gardez le temps pour les échanges qui comptent vraiment." },
+    { name: "Pack 7 : Tech / Projet Avancé", cible: "PME structurées avec un besoin sur mesure (plateforme, outil interne)",
+      portfolio: "KBSAuto.io présenté comme la vitrine ultime du savoir-faire technique de l'agence",
+      accroche: "Avez-vous un projet technique en tête que vous n'avez jamais pu concrétiser ?",
+      objection: "C'est un trop gros projet, on doit réfléchir.",
+      reponse: "Proposez un atelier de cadrage gratuit de 30 minutes pour clarifier le besoin avant tout devis engageant." },
+  ],
+};
+
 const SCRIPTS = [
   { title: "Script 1 — Débutants e-commerce (Pack 1)",
     hook: "\"Tu veux commencer à vendre en ligne mais tu ne sais pas par où commencer ?\"",
@@ -317,6 +474,13 @@ function defaultDispoDays() {
   const d = {};
   for (let i = 1; i <= 30; i++) d[i] = { disponible: false, heure: "", note: "" };
   return d;
+}
+
+const WEEKDAYS_FR = ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"];
+function weekdayAbbrev(dayNum) {
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth(), dayNum);
+  return WEEKDAYS_FR[d.getDay()];
 }
 
 function buildReceiptText(p) {
@@ -494,6 +658,93 @@ function generateDevisPDF(dv, agency) {
   doc.save(`${numero}_${(dv.clientNom || "devis").replace(/\s+/g, "_")}.pdf`);
 }
 
+function generateProspectionPDF(agency) {
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const marginX = 15;
+  const contentW = pageW - marginX * 2;
+  const dateStr = new Date().toISOString().slice(0, 10);
+  let y = 0;
+  let pageNum = 0;
+
+  function startPage(title) {
+    if (pageNum > 0) doc.addPage();
+    pageNum++;
+    y = pdfHeader(doc, title, `TERRAIN-${dateStr.replace(/-/g, "")}`, dateStr, agency);
+  }
+  function ensure(space) {
+    if (y + space > pageH - 20) startPage("GUIDE DE PROSPECTION TERRAIN (suite)");
+  }
+  function sectionTitle(text) {
+    ensure(12);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(13);
+    doc.setTextColor(...PDF_NAVY);
+    doc.text(text, marginX, y);
+    y += 7;
+  }
+  function label(text, color) {
+    ensure(6);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.setTextColor(...(color || PDF_GOLD));
+    doc.text(text.toUpperCase(), marginX, y);
+    y += 4.5;
+  }
+  function body(text, opts) {
+    opts = opts || {};
+    doc.setFont("helvetica", opts.italic ? "italic" : "normal");
+    doc.setFontSize(9.5);
+    doc.setTextColor(...(opts.color || [40, 40, 40]));
+    const lines = doc.splitTextToSize(text, contentW);
+    ensure(lines.length * 4.3 + 2);
+    doc.text(lines, marginX, y);
+    y += lines.length * 4.3 + 3;
+  }
+
+  startPage("GUIDE DE PROSPECTION TERRAIN");
+  sectionTitle("Méthode universelle en 7 étapes");
+  METHODE_TERRAIN.forEach((m, i) => {
+    ensure(8);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10.5);
+    doc.setTextColor(...PDF_NAVY);
+    const titleLines = doc.splitTextToSize(`${i + 1}. ${m.titre}`, contentW);
+    doc.text(titleLines, marginX, y);
+    y += titleLines.length * 5 + 1;
+    m.points.forEach(p => body(`•  ${p}`));
+    y += 2;
+  });
+
+  Object.entries(PROSPECTION_GUIDE).forEach(([categorie, services]) => {
+    startPage(categorie.toUpperCase());
+    services.forEach(s => {
+      ensure(10);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.setTextColor(...PDF_NAVY);
+      doc.text(s.name, marginX, y);
+      y += 6;
+      label("Cible idéale"); body(s.cible);
+      label("Portefeuille à montrer"); body(s.portfolio);
+      label("Accroche"); body(`"${s.accroche}"`, { italic: true, color: [140, 105, 10] });
+      label("Objection fréquente", PDF_MUTED); body(s.objection, { color: [150, 60, 50] });
+      label("Réponse"); body(s.reponse);
+      if (s.script) {
+        label("Script complet — du début à la fin");
+        s.script.forEach((step, i) => body(`${i + 1}. ${step}`));
+      }
+      ensure(6);
+      doc.setDrawColor(220, 215, 200);
+      doc.line(marginX, y, pageW - marginX, y);
+      y += 6;
+    });
+  });
+
+  doc.save("Guide_Prospection_Terrain_KBS.pdf");
+}
+
 const ACADEMIE = [
   { name: "Meta Blueprint", url: "https://www.facebook.com/business/learn", desc: "Cours officiels Meta sur la publicité Facebook et Instagram.", certif: "Certification Meta disponible (cours gratuits, certains examens payants)." },
   { name: "TikTok Academy", url: "https://www.tiktok.com/business/en/tiktok-academy", desc: "Formations officielles TikTok for Business sur le contenu et la publicité.", certif: "Badges de complétion gratuits." },
@@ -644,6 +895,7 @@ export default function App() {
     cible: { label: "Cible", icon: MessageSquare },
     copywriting: { label: "Laboratoire Copywriting", icon: Flame },
     prospection: { label: "Prospection Réseaux", icon: Radar },
+    terrain: { label: "Prospection Terrain", icon: MapPin },
     outils: { label: "Boîte à outils IA", icon: Sparkles },
     academie: { label: "Académie Gratuite", icon: GraduationCap },
     plan: { label: "Plan 30 jours", icon: CalendarDays },
@@ -654,7 +906,7 @@ export default function App() {
   const CATEGORIES = [
     { id: "pilotage", label: "Pilotage", icon: Target, tabs: ["objectif", "planning", "dispos", "kanban"] },
     { id: "ventes", label: "Ventes & Finance", icon: Wallet, tabs: ["crm", "devis", "tresorerie", "dettes", "tarifs"] },
-    { id: "marketing", label: "Marketing", icon: Flame, tabs: ["cible", "copywriting", "prospection"] },
+    { id: "marketing", label: "Marketing", icon: Flame, tabs: ["cible", "copywriting", "prospection", "terrain"] },
     { id: "ressources", label: "Ressources", icon: Sparkles, tabs: ["outils", "academie", "plan", "liens"] },
     { id: "admin", label: "Administration", icon: Shield, tabs: ["administration"] },
   ];
@@ -741,6 +993,7 @@ export default function App() {
         {tab === "cible" && <TabCible />}
         {tab === "copywriting" && <TabCopywriting />}
         {tab === "prospection" && <TabProspection prospection={prospection} setProspection={setProspection} prospects={prospects} setProspects={setProspects} team={team} />}
+        {tab === "terrain" && <TabProspectionTerrain agency={agency} />}
         {tab === "outils" && <TabOutils />}
         {tab === "academie" && <TabAcademie />}
         {tab === "plan" && <TabPlan />}
@@ -1412,6 +1665,7 @@ function TabDispos({ dispos, setDispos, team }) {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6 }}>
             {days.map(d => {
               const av = dayData[d]?.disponible;
+              const weekend = weekdayAbbrev(d) === "Sam" || weekdayAbbrev(d) === "Dim";
               return (
                 <button key={d}
                   onClick={() => toggleDay(d)}
@@ -1422,6 +1676,7 @@ function TabDispos({ dispos, setDispos, team }) {
                     color: av ? C.greenLight : C.white, fontWeight: 700, fontSize: 13,
                     cursor: isEditing ? "pointer" : "default", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", lineHeight: 1.1
                   }}>
+                  <span style={{ fontSize: 8, fontWeight: 700, opacity: 0.75, color: weekend ? C.gold : "inherit" }}>{weekdayAbbrev(d)}</span>
                   {d}
                   {av && dayData[d]?.heure && <span style={{ fontSize: 8, fontWeight: 600 }}>{dayData[d].heure}</span>}
                 </button>
@@ -1959,6 +2214,84 @@ function TabProspection({ prospection, setProspection, prospects, setProspects, 
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ---------------------------------- TAB: PROSPECTION TERRAIN ---------------------------------- */
+function TabProspectionTerrain({ agency }) {
+  const [openService, setOpenService] = useState(null);
+  const [openMethode, setOpenMethode] = useState(true);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <Card style={{ background: C.cardAlt }}>
+        <div style={{ fontSize: 13 }}>🚪 Guide complet pour approcher, convaincre et convertir des entreprises physiques (boutiques, restaurants, PME…) en face à face. Une fiche par service : qui viser, quoi montrer, quoi dire.</div>
+      </Card>
+
+      <button onClick={() => generateProspectionPDF(agency)}
+        style={{ ...btnGold, justifyContent: "center" }}>
+        <FileText size={14} /> Télécharger le guide complet en PDF
+      </button>
+
+      <div>
+        <div onClick={() => setOpenMethode(!openMethode)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}>
+          <H2>Méthode universelle en 7 étapes</H2>
+          {openMethode ? <ChevronDown size={18} color={C.muted} /> : <ChevronRight size={18} color={C.muted} />}
+        </div>
+        {openMethode && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {METHODE_TERRAIN.map((m, i) => (
+              <Card key={i}>
+                <div style={{ fontWeight: 700, fontSize: 13.5, color: C.goldLight, marginBottom: 6 }}>{i + 1}. {m.titre}</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {m.points.map((p, j) => <div key={j} style={{ fontSize: 12.5, color: C.text }}>• {p}</div>)}
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {Object.entries(PROSPECTION_GUIDE).map(([categorie, services]) => (
+        <div key={categorie}>
+          <H2>{categorie}</H2>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {services.map(s => {
+              const open = openService === s.name;
+              return (
+                <Card key={s.name}>
+                  <div onClick={() => setOpenService(open ? null : s.name)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}>
+                    <div style={{ fontWeight: 700, fontSize: 13.5 }}>{s.name}</div>
+                    {open ? <ChevronDown size={16} color={C.muted} /> : <ChevronRight size={16} color={C.muted} />}
+                  </div>
+                  {open && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10, borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
+                      <div><Eyebrow>Cible idéale</Eyebrow><div style={{ fontSize: 12.5 }}>{s.cible}</div></div>
+                      <div><Eyebrow>Portefeuille à montrer</Eyebrow><div style={{ fontSize: 12.5 }}>{s.portfolio}</div></div>
+                      <div><Eyebrow>Accroche</Eyebrow><div style={{ fontSize: 12.5, fontStyle: "italic", color: C.goldLight }}>"{s.accroche}"</div></div>
+                      <div><Eyebrow>Objection fréquente</Eyebrow><div style={{ fontSize: 12.5, color: C.rustLight }}>{s.objection}</div></div>
+                      <div><Eyebrow>Réponse</Eyebrow><div style={{ fontSize: 12.5 }}>{s.reponse}</div></div>
+                      {s.script && (
+                        <div>
+                          <Eyebrow>Script complet — du début à la fin</Eyebrow>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 4 }}>
+                            {s.script.map((step, i) => (
+                              <div key={i} style={{ fontSize: 12, display: "flex", gap: 6 }}>
+                                <span style={{ color: C.gold, fontWeight: 700 }}>{i + 1}.</span> {step}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
