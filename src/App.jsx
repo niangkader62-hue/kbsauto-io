@@ -1,11 +1,14 @@
 import { useState, useEffect, useMemo } from "react";
 import { createClient } from "@supabase/supabase-js";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import {
   Target, Users, LayoutGrid, Sparkles, CalendarDays, MessageSquare,
   Wallet, Link2, Plus, Trash2, ChevronDown, ChevronRight, ExternalLink,
   CheckCircle2, Circle, RotateCcw, TrendingUp, Banknote, Flame, GraduationCap,
   Award, TrendingDown, Lock, LogOut, CalendarClock, Send, History, FileText,
-  Shield, UserPlus, AlertTriangle, Search, Copy, Radar
+  Shield, UserPlus, AlertTriangle, Search, Copy, Radar, CalendarCheck,
+  Pencil, Save, KeyRound, RefreshCw, X
 } from "lucide-react";
 
 /* ---------------------------------- SUPABASE ---------------------------------- */
@@ -24,25 +27,41 @@ const C = {
 
 const FONT_IMPORT = `@import url('https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap');`;
 
-/* Mot de passe d'accès partagé pour toute l'équipe — modifie-le ici quand tu veux */
-const APP_PASSWORD = "KBS2026";
-/* Codes réservés par rôle — chacun est différent, ne partage que le bon code à la bonne personne */
-const CEO_CODE = "CEO2026";
-const CATHERINE_CODE = "CATH2026";
-const PLANNING_CODE = "AGENDA2026";
-const ADMIN_CODE = "ADMIN2026";
+/* Codes d'accès par défaut — modifiables ensuite directement dans l'onglet Administration */
+const DEFAULT_CODES = {
+  app: "KBS2026",       // mot de passe général de l'outil
+  ceo: "CEO2026",       // Objectif (CEO)
+  catherine: "CATH2026", // CRM & Trésorerie (Catherine)
+  planning: "AGENDA2026", // Mon Planning (CEO)
+  admin: "ADMIN2026",   // Administration — accès total
+};
+function autoCode(name) {
+  const base = (name || "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z]/g, "").slice(0, 6) || "MEMBRE";
+  return `${base}2026`;
+}
+
+/* Coordonnées de l'agence — affichées sur les reçus et devis PDF, modifiables dans Administration */
+const DEFAULT_AGENCY = {
+  name: "KBS DIGITAL AGENCY",
+  email: "Niangkader62@gmail.com",
+  phone1: "+223 76 90 80 31",
+  phone2: "+223 90 64 71 06",
+  address: "",
+};
 
 /* ---------------------------------- STATIC DATA ---------------------------------- */
 
 const TEAM_COLORS = ["#C9A227", "#3CBE7C", "#DD6A54", "#7FB3E8", "#C58FE8", "#E8A26B"];
 
 const DEFAULT_TEAM = [
-  { id: "ceo", name: "CEO (Toi)", role: "Stratégie, Technique, Enseignement", color: C.gold,
+  { id: "ceo", name: "CEO (Toi)", role: "Stratégie, Technique, Enseignement", color: C.gold, code: "CEO2026",
     checklist: ["Vérifier les tâches à valider", "Monter la vidéo finale du jour", "Avancer sur un projet client", "Point d'équipe 15 min"] },
-  { id: "catherine", name: "Catherine", role: "Commercial, Closing, Trésorerie", color: C.greenLight,
+  { id: "catherine", name: "Catherine", role: "Commercial, Closing, Trésorerie", color: C.greenLight, code: "CATH2026",
     checklist: ["Traiter les messages WhatsApp", "Accueillir les nouveaux élèves", "Relancer les prospects en attente", "Mettre à jour la trésorerie"] },
-  { id: "sacko", name: "Sacko", role: "Contenu, Copywriting, Community", color: C.rustLight,
-    checklist: ["Analyser une tendance TikTok", "Écrire un script vidéo", "Tourner une vidéo", "Répondre aux commentaires"] },
+  { id: "sacko", name: "Sacko", role: "Coordination, Graphisme", color: C.rustLight, code: "SACKO2026",
+    checklist: ["Coordonner les tâches de l'équipe", "Créer les visuels du jour", "Vérifier la cohérence graphique", "Point d'équipe 15 min"] },
+  { id: "oumou", name: "Oumou", role: "Créatrice de contenu", color: "#7FB3E8", code: "OUMOU2026",
+    checklist: ["Écrire un script vidéo", "Tourner une vidéo", "Analyser une tendance TikTok", "Répondre aux commentaires"] },
 ];
 
 const PACKS = [
@@ -293,6 +312,12 @@ function defaultPlanning() {
   return d;
 }
 
+function defaultDispoDays() {
+  const d = {};
+  for (let i = 1; i <= 30; i++) d[i] = { disponible: false, heure: "", note: "" };
+  return d;
+}
+
 function buildReceiptText(p) {
   const date = p.dateInscription || new Date().toISOString().slice(0, 10);
   return `🧾 REÇU — KBS Digital Agency%0A%0AClient : ${p.prenom || ""} ${p.nom}%0AService : ${p.pack}%0AMontant payé : ${fcfa(p.montant)}%0ADate : ${date}%0A%0AMerci pour votre confiance ! 🙏%0AKBS Digital Agency`;
@@ -307,6 +332,165 @@ function buildRappelText(d) {
 function whatsappRappelLink(d) {
   const phone = (d.whatsapp || "").replace(/[^0-9]/g, "");
   return `https://wa.me/${phone}?text=${buildRappelText(d)}`;
+}
+
+/* ---------------------------------- PDF : REÇU & DEVIS PROFESSIONNELS ---------------------------------- */
+const PDF_GOLD = [201, 162, 39];
+const PDF_NAVY = [10, 19, 16];
+const PDF_MUTED = [110, 122, 112];
+
+function docNumber(prefix, dateStr, id) {
+  const d = (dateStr || new Date().toISOString().slice(0, 10)).replace(/-/g, "");
+  return `${prefix}-${d}-${String(id).slice(-4)}`;
+}
+
+function pdfHeader(doc, title, numero, dateStr, agency) {
+  const pageW = doc.internal.pageSize.getWidth();
+  doc.setFillColor(...PDF_NAVY);
+  doc.rect(0, 0, pageW, 38, "F");
+  doc.setFillColor(...PDF_GOLD);
+  doc.rect(0, 38, pageW, 1.5, "F");
+
+  doc.setTextColor(...PDF_GOLD);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(20);
+  doc.text(agency.name || "KBS DIGITAL AGENCY", 15, 17);
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.text("Stratégie, Ventes & Production digitale", 15, 24);
+  const contactLine = [agency.phone1, agency.phone2].filter(Boolean).join("  /  ") + (agency.email ? `   •   ${agency.email}` : "");
+  doc.text(contactLine, 15, 30);
+  if (agency.address) doc.text(agency.address, 15, 35);
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(15);
+  doc.text(title, pageW - 15, 17, { align: "right" });
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9.5);
+  doc.text(`N° ${numero}`, pageW - 15, 24, { align: "right" });
+  doc.text(`Date : ${dateStr}`, pageW - 15, 30, { align: "right" });
+
+  return 52; // y position to continue below header
+}
+
+function pdfFooter(doc, agency, message) {
+  const pageW = doc.internal.pageSize.getWidth();
+  doc.setFont("helvetica", "italic");
+  doc.setFontSize(10);
+  doc.setTextColor(...PDF_MUTED);
+  const lines = doc.splitTextToSize(message, pageW - 30);
+  doc.text(lines, 15, 255);
+
+  doc.setDrawColor(...PDF_GOLD);
+  doc.setLineWidth(0.5);
+  doc.line(15, 278, pageW - 15, 278);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...PDF_MUTED);
+  const contactLine = [agency.name, agency.phone1, agency.phone2, agency.email].filter(Boolean).join("  —  ");
+  doc.text(contactLine, pageW / 2, 285, { align: "center" });
+}
+
+function generateReceiptPDF(p, agency) {
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const pageW = doc.internal.pageSize.getWidth();
+  const dateStr = p.dateInscription || new Date().toISOString().slice(0, 10);
+  const numero = docNumber("REC", dateStr, p.id);
+  let y = pdfHeader(doc, "REÇU DE PAIEMENT", numero, dateStr, agency);
+
+  doc.setTextColor(...PDF_NAVY);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.text("Client", 15, y);
+  y += 6;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10.5);
+  doc.text(`${p.prenom || ""} ${p.nom || ""}`.trim(), 15, y); y += 5.5;
+  if (p.whatsapp) { doc.text(`WhatsApp : ${p.whatsapp}`, 15, y); y += 5.5; }
+  if (p.email) { doc.text(`Email : ${p.email}`, 15, y); y += 5.5; }
+  const adr = [p.adresse, p.quartier].filter(Boolean).join(", ");
+  if (adr) { doc.text(`Adresse : ${adr}`, 15, y); y += 5.5; }
+
+  y += 4;
+  autoTable(doc, {
+    startY: y,
+    head: [["Service / Prestation", "Montant payé"]],
+    body: [[p.pack || "—", fcfa(p.montant)]],
+    theme: "grid",
+    headStyles: { fillColor: PDF_NAVY, textColor: PDF_GOLD, fontStyle: "bold", fontSize: 10.5 },
+    styles: { fontSize: 10.5, cellPadding: 4, textColor: PDF_NAVY },
+    columnStyles: { 1: { halign: "right", fontStyle: "bold" } },
+  });
+
+  let y2 = doc.lastAutoTable.finalY + 10;
+  doc.setFillColor(244, 240, 228);
+  doc.rect(15, y2, pageW - 30, 16, "F");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.setTextColor(...PDF_NAVY);
+  doc.text("Total payé", 20, y2 + 10.5);
+  doc.setTextColor(140, 105, 10);
+  doc.text(fcfa(p.montant), pageW - 20, y2 + 10.5, { align: "right" });
+
+  pdfFooter(doc, agency, "Merci pour votre confiance. Ce reçu atteste du paiement reçu par notre agence pour le service mentionné ci-dessus. Conservez-le comme preuve de paiement.");
+  doc.save(`${numero}_${(p.nom || "recu").replace(/\s+/g, "_")}.pdf`);
+}
+
+function generateDevisPDF(dv, agency) {
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const pageW = doc.internal.pageSize.getWidth();
+  const dateStr = dv.date || new Date().toISOString().slice(0, 10);
+  const numero = docNumber("DEV", dateStr, dv.id);
+  let y = pdfHeader(doc, "DEVIS", numero, dateStr, agency);
+
+  doc.setTextColor(...PDF_NAVY);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.text("Destinataire", 15, y);
+  y += 6;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10.5);
+  doc.text(dv.clientNom || "—", 15, y); y += 5.5;
+  if (dv.whatsapp) { doc.text(`WhatsApp : ${dv.whatsapp}`, 15, y); y += 5.5; }
+  if (dv.validite) { doc.text(`Devis valable jusqu'au : ${dv.validite}`, 15, y); y += 5.5; }
+
+  y += 4;
+  const items = (dv.items && dv.items.length ? dv.items : [{ label: "—", qte: 1, prix: 0 }]);
+  const total = items.reduce((s, it) => s + (Number(it.qte) || 1) * (Number(it.prix) || 0), 0);
+  autoTable(doc, {
+    startY: y,
+    head: [["Prestation", "Qté", "Prix unitaire", "Sous-total"]],
+    body: items.map(it => [it.label || "—", String(it.qte || 1), fcfa(it.prix), fcfa((Number(it.qte) || 1) * (Number(it.prix) || 0))]),
+    theme: "grid",
+    headStyles: { fillColor: PDF_NAVY, textColor: PDF_GOLD, fontStyle: "bold", fontSize: 10 },
+    styles: { fontSize: 10, cellPadding: 3.5, textColor: PDF_NAVY },
+    columnStyles: { 1: { halign: "center", cellWidth: 18 }, 2: { halign: "right" }, 3: { halign: "right", fontStyle: "bold" } },
+  });
+
+  let y2 = doc.lastAutoTable.finalY + 10;
+  doc.setFillColor(244, 240, 228);
+  doc.rect(15, y2, pageW - 30, 16, "F");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.setTextColor(...PDF_NAVY);
+  doc.text("Montant total du devis", 20, y2 + 10.5);
+  doc.setTextColor(140, 105, 10);
+  doc.text(fcfa(total), pageW - 20, y2 + 10.5, { align: "right" });
+  y2 += 24;
+
+  if (dv.notes) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9.5);
+    doc.setTextColor(...PDF_MUTED);
+    const noteLines = doc.splitTextToSize(`Notes : ${dv.notes}`, pageW - 30);
+    doc.text(noteLines, 15, y2);
+  }
+
+  pdfFooter(doc, agency, "Ce devis est une proposition commerciale non contractuelle, valable jusqu'à la date indiquée ci-dessus. Il devient définitif après acceptation écrite et versement de l'acompte convenu.");
+  doc.save(`${numero}_${(dv.clientNom || "devis").replace(/\s+/g, "_")}.pdf`);
 }
 
 const ACADEMIE = [
@@ -386,6 +570,10 @@ export default function App() {
   const [planning, setPlanning] = useState(defaultPlanning());
   const [dettes, setDettes] = useState([]);
   const [prospection, setProspection] = useState([]);
+  const [dispos, setDispos] = useState({});
+  const [codes, setCodes] = useState(DEFAULT_CODES);
+  const [agency, setAgency] = useState(DEFAULT_AGENCY);
+  const [devis, setDevis] = useState([]);
 
   useEffect(() => {
     (async () => {
@@ -399,6 +587,10 @@ export default function App() {
       setPlanning(await loadShared("kbs:planning", defaultPlanning()));
       setDettes(await loadShared("kbs:dettes", []));
       setProspection(await loadShared("kbs:prospection", []));
+      setDispos(await loadShared("kbs:dispos", {}));
+      setCodes(await loadShared("kbs:codes", DEFAULT_CODES));
+      setAgency(await loadShared("kbs:agency", DEFAULT_AGENCY));
+      setDevis(await loadShared("kbs:devis", []));
       setLoaded(true);
     })();
   }, []);
@@ -413,6 +605,10 @@ export default function App() {
   useEffect(() => { if (loaded) saveShared("kbs:planning", planning); }, [planning, loaded]);
   useEffect(() => { if (loaded) saveShared("kbs:dettes", dettes); }, [dettes, loaded]);
   useEffect(() => { if (loaded) saveShared("kbs:prospection", prospection); }, [prospection, loaded]);
+  useEffect(() => { if (loaded) saveShared("kbs:dispos", dispos); }, [dispos, loaded]);
+  useEffect(() => { if (loaded) saveShared("kbs:codes", codes); }, [codes, loaded]);
+  useEffect(() => { if (loaded) saveShared("kbs:agency", agency); }, [agency, loaded]);
+  useEffect(() => { if (loaded) saveShared("kbs:devis", devis); }, [devis, loaded]);
 
   const totalCA = useMemo(() => prospects.reduce((s, p) => s + (Number(p.montant) || 0), 0), [prospects]);
   const totalCommission = totalCA * 0.25;
@@ -420,11 +616,27 @@ export default function App() {
   const beneficeNet = totalCA - totalCommission - totalDepenses;
   const pct = Math.min(100, Math.round((totalCA / (goal || 1)) * 100));
 
+  function resetAllData() {
+    setProspects([]);
+    setKanban({ todo: [], doing: [], review: [], done: [] });
+    setChecks({});
+    setLinks([]);
+    setExpenses([]);
+    setPlanning(defaultPlanning());
+    setDettes([]);
+    setProspection([]);
+    setDispos({});
+    setDevis([]);
+    setGoal(250000);
+  }
+
   const TAB_META = {
     objectif: { label: "Objectif", icon: Target },
     planning: { label: "Mon Planning", icon: CalendarClock },
+    dispos: { label: "Disponibilités équipe", icon: CalendarCheck },
     kanban: { label: "Kanban", icon: LayoutGrid },
     crm: { label: "CRM & Clients", icon: Users },
+    devis: { label: "Devis", icon: FileText },
     tresorerie: { label: "Trésorerie", icon: Banknote },
     dettes: { label: "Dettes & Rappels", icon: AlertTriangle },
     tarifs: { label: "Tarifs", icon: Wallet },
@@ -439,8 +651,8 @@ export default function App() {
   };
 
   const CATEGORIES = [
-    { id: "pilotage", label: "Pilotage", icon: Target, tabs: ["objectif", "planning", "kanban"] },
-    { id: "ventes", label: "Ventes & Finance", icon: Wallet, tabs: ["crm", "tresorerie", "dettes", "tarifs"] },
+    { id: "pilotage", label: "Pilotage", icon: Target, tabs: ["objectif", "planning", "dispos", "kanban"] },
+    { id: "ventes", label: "Ventes & Finance", icon: Wallet, tabs: ["crm", "devis", "tresorerie", "dettes", "tarifs"] },
     { id: "marketing", label: "Marketing", icon: Flame, tabs: ["cible", "copywriting", "prospection"] },
     { id: "ressources", label: "Ressources", icon: Sparkles, tabs: ["outils", "academie", "plan", "liens"] },
     { id: "admin", label: "Administration", icon: Shield, tabs: ["administration"] },
@@ -456,8 +668,10 @@ export default function App() {
     <div style={{ minHeight: "100vh", background: C.bg, color: C.text, fontFamily: "Inter, sans-serif" }}>
       <style>{FONT_IMPORT}</style>
 
-      {!unlocked ? (
-        <LoginScreen onUnlock={() => setUnlocked(true)} />
+      {!loaded ? (
+        <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: C.muted, fontSize: 13 }}>Chargement…</div>
+      ) : !unlocked ? (
+        <LoginScreen onUnlock={() => setUnlocked(true)} codes={codes} />
       ) : (
       <>
       {/* HEADER */}
@@ -514,11 +728,13 @@ export default function App() {
       </div>
 
       <div style={{ padding: 16, maxWidth: 720, margin: "0 auto" }}>
-        {tab === "objectif" && <TabObjectif goal={goal} setGoal={setGoal} totalCA={totalCA} totalCommission={totalCommission} pct={pct} prospects={prospects} team={team} />}
-        {tab === "planning" && <TabPlanning planning={planning} setPlanning={setPlanning} />}
-        {tab === "kanban" && <TabKanban kanban={kanban} setKanban={setKanban} checks={checks} setChecks={setChecks} team={team} />}
-        {tab === "crm" && <TabCRM prospects={prospects} setProspects={setProspects} totalCA={totalCA} totalCommission={totalCommission} team={team} />}
-        {tab === "tresorerie" && <TabTresorerie prospects={prospects} setProspects={setProspects} expenses={expenses} setExpenses={setExpenses} totalCA={totalCA} totalCommission={totalCommission} totalDepenses={totalDepenses} beneficeNet={beneficeNet} team={team} />}
+        {tab === "objectif" && <TabObjectif goal={goal} setGoal={setGoal} totalCA={totalCA} totalCommission={totalCommission} pct={pct} prospects={prospects} team={team} codes={codes} />}
+        {tab === "planning" && <TabPlanning planning={planning} setPlanning={setPlanning} codes={codes} />}
+        {tab === "dispos" && <TabDispos dispos={dispos} setDispos={setDispos} team={team} />}
+        {tab === "kanban" && <TabKanban kanban={kanban} setKanban={setKanban} checks={checks} setChecks={setChecks} team={team} codes={codes} />}
+        {tab === "crm" && <TabCRM prospects={prospects} setProspects={setProspects} totalCA={totalCA} totalCommission={totalCommission} team={team} codes={codes} agency={agency} />}
+        {tab === "devis" && <TabDevis devis={devis} setDevis={setDevis} prospects={prospects} team={team} agency={agency} />}
+        {tab === "tresorerie" && <TabTresorerie prospects={prospects} setProspects={setProspects} expenses={expenses} setExpenses={setExpenses} totalCA={totalCA} totalCommission={totalCommission} totalDepenses={totalDepenses} beneficeNet={beneficeNet} team={team} codes={codes} />}
         {tab === "dettes" && <TabDettes dettes={dettes} setDettes={setDettes} prospects={prospects} />}
         {tab === "tarifs" && <TabTarifs />}
         {tab === "cible" && <TabCible />}
@@ -528,7 +744,7 @@ export default function App() {
         {tab === "academie" && <TabAcademie />}
         {tab === "plan" && <TabPlan />}
         {tab === "liens" && <TabLiens links={links} setLinks={setLinks} team={team} />}
-        {tab === "administration" && <TabAdministration team={team} setTeam={setTeam} />}
+        {tab === "administration" && <TabAdministration team={team} setTeam={setTeam} codes={codes} setCodes={setCodes} onResetAll={resetAllData} agency={agency} setAgency={setAgency} />}
       </div>
       </>
       )}
@@ -537,12 +753,12 @@ export default function App() {
 }
 
 /* ---------------------------------- LOGIN SCREEN ---------------------------------- */
-function LoginScreen({ onUnlock }) {
+function LoginScreen({ onUnlock, codes }) {
   const [pwd, setPwd] = useState("");
   const [error, setError] = useState(false);
 
   function tryUnlock() {
-    if (pwd === APP_PASSWORD) { setError(false); onUnlock(); }
+    if (pwd === codes.app) { setError(false); onUnlock(); }
     else { setError(true); }
   }
 
@@ -571,7 +787,7 @@ function LoginScreen({ onUnlock }) {
 }
 
 /* ---------------------------------- TAB: OBJECTIF ---------------------------------- */
-function TabObjectif({ goal, setGoal, totalCA, totalCommission, pct, prospects, team }) {
+function TabObjectif({ goal, setGoal, totalCA, totalCommission, pct, prospects, team, codes }) {
   const [ceoUnlocked, setCeoUnlocked] = useState(false);
   const r = 70, circ = 2 * Math.PI * r;
   const perPerson = team.map(m => ({
@@ -602,7 +818,7 @@ function TabObjectif({ goal, setGoal, totalCA, totalCommission, pct, prospects, 
               style={{ width: 110, background: C.cardAlt, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, padding: "4px 8px", fontSize: 13 }} />
           </div>
         ) : (
-          <MiniUnlock code={CEO_CODE} label="Réservé au CEO" onUnlock={() => setCeoUnlocked(true)} />
+          <MiniUnlock code={codes.ceo} label="Réservé au CEO" onUnlock={() => setCeoUnlocked(true)} />
         )}
       </Card>
 
@@ -633,7 +849,7 @@ function TabObjectif({ goal, setGoal, totalCA, totalCommission, pct, prospects, 
 }
 
 /* ---------------------------------- TAB: CRM ---------------------------------- */
-function TabCRM({ prospects, setProspects, totalCA, totalCommission, team }) {
+function TabCRM({ prospects, setProspects, totalCA, totalCommission, team, codes, agency }) {
   const [form, setForm] = useState({
     nom: "", prenom: "", whatsapp: "", email: "", adresse: "", quartier: "",
     dateInscription: new Date().toISOString().slice(0, 10),
@@ -701,7 +917,7 @@ function TabCRM({ prospects, setProspects, totalCA, totalCommission, team }) {
             <button onClick={addProspect} style={btnGold}><Plus size={14} /> Ajouter le client</button>
           </div>
         ) : (
-          <MiniUnlock code={CATHERINE_CODE} label="Réservé à Catherine" onUnlock={() => setCatherineUnlocked(true)} />
+          <MiniUnlock code={codes.catherine} label="Réservé à Catherine" onUnlock={() => setCatherineUnlocked(true)} />
         )}
       </Card>
 
@@ -763,13 +979,19 @@ function TabCRM({ prospects, setProspects, totalCA, totalCommission, team }) {
                 </div>
                 {Number(p.montant) > 0 && p.whatsapp ? (
                   <a href={whatsappReceiptLink(p)} target="_blank" rel="noopener noreferrer"
-                    style={{ ...btnGold, textDecoration: "none", marginBottom: 12 }}>
+                    style={{ ...btnGold, textDecoration: "none", marginBottom: 8 }}>
                     <Send size={13} /> Envoyer le reçu via WhatsApp
                   </a>
                 ) : (
-                  <div style={{ fontSize: 11.5, color: C.muted, background: C.cardAlt, borderRadius: 8, padding: 10, marginBottom: 12 }}>
+                  <div style={{ fontSize: 11.5, color: C.muted, background: C.cardAlt, borderRadius: 8, padding: 10, marginBottom: 8 }}>
                     {!p.whatsapp ? "Ajoute un numéro WhatsApp" : "Renseigne le montant payé"} pour activer l'envoi du reçu.
                   </div>
+                )}
+                {Number(p.montant) > 0 && (
+                  <button onClick={() => generateReceiptPDF(p, agency)}
+                    style={{ ...iconBtn, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "9px", marginBottom: 12, color: C.goldLight, borderColor: C.gold }}>
+                    <FileText size={14} /> Télécharger le reçu PDF (pro)
+                  </button>
                 )}
 
                 <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 6 }}>
@@ -798,9 +1020,111 @@ function TabCRM({ prospects, setProspects, totalCA, totalCommission, team }) {
   );
 }
 
+/* ---------------------------------- TAB: DEVIS ---------------------------------- */
+function TabDevis({ devis, setDevis, prospects, team, agency }) {
+  const [form, setForm] = useState({ clientNom: "", whatsapp: "", validite: "", notes: "", linkedId: "", items: [{ label: "", qte: 1, prix: "" }] });
+
+  function pickClient(id) {
+    const p = prospects.find(pp => String(pp.id) === String(id));
+    if (p) setForm({ ...form, linkedId: id, clientNom: `${p.prenom || ""} ${p.nom}`.trim(), whatsapp: p.whatsapp || "" });
+    else setForm({ ...form, linkedId: "" });
+  }
+  function updateItem(idx, patch) {
+    setForm({ ...form, items: form.items.map((it, i) => i === idx ? { ...it, ...patch } : it) });
+  }
+  function addItem() { setForm({ ...form, items: [...form.items, { label: "", qte: 1, prix: "" }] }); }
+  function removeItem(idx) { setForm({ ...form, items: form.items.filter((_, i) => i !== idx) }); }
+  function addDevis() {
+    if (!form.clientNom.trim()) return;
+    const items = form.items.filter(it => it.label.trim());
+    if (!items.length) return;
+    setDevis([...devis, { ...form, items, id: Date.now(), date: new Date().toISOString().slice(0, 10), statut: "Envoyé" }]);
+    setForm({ clientNom: "", whatsapp: "", validite: "", notes: "", linkedId: "", items: [{ label: "", qte: 1, prix: "" }] });
+  }
+  function updateStatut(id, statut) { setDevis(devis.map(d => d.id === id ? { ...d, statut } : d)); }
+  function removeDevis(id) { setDevis(devis.filter(d => d.id !== id)); }
+  function total(items) { return (items || []).reduce((s, it) => s + (Number(it.qte) || 1) * (Number(it.prix) || 0), 0); }
+
+  const statuts = ["Envoyé", "Accepté", "Refusé"];
+  const statutColor = { "Envoyé": C.goldLight, "Accepté": C.greenLight, "Refusé": C.rustLight };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <Card style={{ background: C.cardAlt }}>
+        <div style={{ fontSize: 13 }}>📝 Crée un devis professionnel, télécharge-le en PDF et envoie-le au client avant qu'il ne paie.</div>
+      </Card>
+
+      <Card>
+        <Eyebrow>Nouveau devis</Eyebrow>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+          <select value={form.linkedId} onChange={e => pickClient(e.target.value)} style={inputStyle}>
+            <option value="">— Choisir un client existant (optionnel) —</option>
+            {prospects.map(p => <option key={p.id} value={p.id}>{p.prenom} {p.nom}</option>)}
+          </select>
+          <input placeholder="Nom du client / entreprise" value={form.clientNom} onChange={e => setForm({ ...form, clientNom: e.target.value })} style={inputStyle} />
+          <input placeholder="Numéro WhatsApp" value={form.whatsapp} onChange={e => setForm({ ...form, whatsapp: e.target.value })} style={inputStyle} />
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <label style={{ fontSize: 11, color: C.muted, whiteSpace: "nowrap" }}>Valable jusqu'au :</label>
+            <input type="date" value={form.validite} onChange={e => setForm({ ...form, validite: e.target.value })} style={{ ...inputStyle, flex: 1 }} />
+          </div>
+
+          <Eyebrow>Prestations</Eyebrow>
+          {form.items.map((it, idx) => (
+            <div key={idx} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <input placeholder="Prestation" value={it.label} onChange={e => updateItem(idx, { label: e.target.value })} style={{ ...inputStyle, flex: 2 }} />
+              <input type="number" placeholder="Qté" value={it.qte} onChange={e => updateItem(idx, { qte: e.target.value })} style={{ ...inputStyle, flex: "0 0 55px" }} />
+              <input type="number" placeholder="Prix" value={it.prix} onChange={e => updateItem(idx, { prix: e.target.value })} style={{ ...inputStyle, flex: 1 }} />
+              {form.items.length > 1 && <button onClick={() => removeItem(idx)} style={iconBtn}><Trash2 size={12} /></button>}
+            </div>
+          ))}
+          <button onClick={addItem} style={{ ...iconBtn, alignSelf: "flex-start" }}><Plus size={12} /> Ajouter une ligne</button>
+
+          <textarea placeholder="Notes / conditions (optionnel)" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} style={{ ...inputStyle, minHeight: 50, resize: "vertical" }} />
+
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 700, color: C.goldLight, padding: "4px 2px" }}>
+            <span>Total du devis</span><span>{fcfa(total(form.items))}</span>
+          </div>
+
+          <button onClick={addDevis} style={btnGold}><Plus size={14} /> Créer le devis</button>
+        </div>
+      </Card>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {devis.length === 0 && <div style={{ color: C.muted, fontSize: 13, textAlign: "center", padding: 16 }}>Aucun devis pour l'instant.</div>}
+        {devis.slice().reverse().map(d => (
+          <Card key={d.id}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>{d.clientNom}</div>
+                <div style={{ fontSize: 12, color: C.muted }}>{d.date}{d.validite ? ` · Valable jusqu'au ${d.validite}` : ""}</div>
+              </div>
+              <button onClick={() => removeDevis(d.id)} style={{ background: "none", border: "none", color: C.rustLight, cursor: "pointer" }}><Trash2 size={16} /></button>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+              <select value={d.statut} onChange={e => updateStatut(d.id, e.target.value)} style={{ ...inputStyle, padding: "4px 8px", fontSize: 12, width: "auto", color: statutColor[d.statut] }}>
+                {statuts.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.goldLight }}>{fcfa(total(d.items))}</div>
+            </div>
+            <button onClick={() => generateDevisPDF(d, agency)}
+              style={{ ...iconBtn, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "9px", marginTop: 10, color: C.goldLight, borderColor: C.gold }}>
+              <FileText size={14} /> Télécharger le devis PDF
+            </button>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ---------------------------------- TAB: KANBAN ---------------------------------- */
-function TabKanban({ kanban, setKanban, checks, setChecks, team }) {
+function TabKanban({ kanban, setKanban, checks, setChecks, team, codes }) {
   const [newTask, setNewTask] = useState("");
+  const [myUnlock, setMyUnlock] = useState(null);
+  const [adminUnlocked, setAdminUnlocked] = useState(false);
+  const [whoPicker, setWhoPicker] = useState(team[0]?.id || "");
+  const [unlockCode, setUnlockCode] = useState("");
+  const [unlockError, setUnlockError] = useState(false);
   const cols = [
     { id: "todo", label: "À faire" }, { id: "doing", label: "En cours" },
     { id: "review", label: "À valider" }, { id: "done", label: "Terminé" },
@@ -821,12 +1145,22 @@ function TabKanban({ kanban, setKanban, checks, setChecks, team }) {
   function removeTask(colId, taskId) {
     setKanban({ ...kanban, [colId]: kanban[colId].filter(t => t.id !== taskId) });
   }
+  function canEdit(personId) { return adminUnlocked || myUnlock === personId; }
   function toggleCheck(person, idx) {
+    if (!canEdit(person)) return;
     const list = checks[person] || [];
     const next = list.includes(idx) ? list.filter(i => i !== idx) : [...list, idx];
     setChecks({ ...checks, [person]: next });
   }
-  function resetChecks(person) { setChecks({ ...checks, [person]: [] }); }
+  function resetChecks(person) {
+    if (!canEdit(person)) return;
+    setChecks({ ...checks, [person]: [] });
+  }
+  function tryUnlockMine() {
+    const member = team.find(m => m.id === whoPicker);
+    if (member && unlockCode === (member.code || "")) { setMyUnlock(member.id); setUnlockError(false); setUnlockCode(""); }
+    else setUnlockError(true);
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
@@ -864,26 +1198,53 @@ function TabKanban({ kanban, setKanban, checks, setChecks, team }) {
 
       <div>
         <H2>Checklists quotidiennes</H2>
+        <div style={{ color: C.muted, fontSize: 12, marginBottom: 8 }}>Chacun voit toutes les checklists, mais ne peut cocher que la sienne avec son code personnel. Le CEO peut tout cocher avec le code Administration.</div>
+
+        {!adminUnlocked && (
+          <Card style={{ marginBottom: 10 }}>
+            <Eyebrow>Déverrouiller ma checklist</Eyebrow>
+            <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+              <select value={whoPicker} onChange={e => { setWhoPicker(e.target.value); setUnlockError(false); }} style={{ ...inputStyle, flex: "1 1 120px" }}>
+                {team.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+              <input type="password" placeholder="Ton code" value={unlockCode}
+                onChange={e => { setUnlockCode(e.target.value); setUnlockError(false); }}
+                onKeyDown={e => { if (e.key === "Enter") tryUnlockMine(); }}
+                style={{ ...inputStyle, flex: "1 1 100px" }} />
+              <button onClick={tryUnlockMine} style={{ ...iconBtn, padding: "0 14px" }}>OK</button>
+            </div>
+            {unlockError && <div style={{ color: C.rustLight, fontSize: 11, marginTop: 6 }}>Code incorrect.</div>}
+            {myUnlock && <div style={{ color: C.greenLight, fontSize: 11, marginTop: 6 }}>✓ {team.find(m => m.id === myUnlock)?.name} peut cocher sa checklist.</div>}
+            <div style={{ marginTop: 8 }}>
+              <MiniUnlock code={codes.admin} label="Ou code Administration (CEO — tout déverrouiller)" onUnlock={() => setAdminUnlocked(true)} />
+            </div>
+          </Card>
+        )}
+        {adminUnlocked && <div style={{ color: C.greenLight, fontSize: 12, marginBottom: 10 }}>✓ Mode Administration : toutes les checklists sont modifiables.</div>}
+
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {team.map(m => (
-            <Card key={m.id}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <Eyebrow>{m.name}</Eyebrow>
-                <button onClick={() => resetChecks(m.id)} style={iconBtn}><RotateCcw size={12} /></button>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
-                {(m.checklist || []).map((item, idx) => {
-                  const done = (checks[m.id] || []).includes(idx);
-                  return (
-                    <div key={idx} onClick={() => toggleCheck(m.id, idx)} style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
-                      {done ? <CheckCircle2 size={16} color={C.greenLight} /> : <Circle size={16} color={C.muted} />}
-                      <span style={{ fontSize: 13, color: done ? C.muted : C.text, textDecoration: done ? "line-through" : "none" }}>{item}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </Card>
-          ))}
+          {team.map(m => {
+            const editable = canEdit(m.id);
+            return (
+              <Card key={m.id}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <Eyebrow>{m.name}{editable ? "" : " 🔒"}</Eyebrow>
+                  {editable && <button onClick={() => resetChecks(m.id)} style={iconBtn}><RotateCcw size={12} /></button>}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
+                  {(m.checklist || []).map((item, idx) => {
+                    const done = (checks[m.id] || []).includes(idx);
+                    return (
+                      <div key={idx} onClick={() => toggleCheck(m.id, idx)} style={{ display: "flex", gap: 8, alignItems: "center", cursor: editable ? "pointer" : "default", opacity: editable ? 1 : 0.7 }}>
+                        {done ? <CheckCircle2 size={16} color={C.greenLight} /> : <Circle size={16} color={C.muted} />}
+                        <span style={{ fontSize: 13, color: done ? C.muted : C.text, textDecoration: done ? "line-through" : "none" }}>{item}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -891,7 +1252,7 @@ function TabKanban({ kanban, setKanban, checks, setChecks, team }) {
 }
 
 /* ---------------------------------- TAB: MON PLANNING ---------------------------------- */
-function TabPlanning({ planning, setPlanning }) {
+function TabPlanning({ planning, setPlanning, codes }) {
   const [ceoUnlocked, setCeoUnlocked] = useState(false);
   const days = Array.from({ length: 30 }, (_, i) => i + 1);
 
@@ -921,7 +1282,7 @@ function TabPlanning({ planning, setPlanning }) {
 
       {!ceoUnlocked && (
         <Card style={{ textAlign: "center" }}>
-          <MiniUnlock code={PLANNING_CODE} label="Réservé au CEO pour modifier" onUnlock={() => setCeoUnlocked(true)} />
+          <MiniUnlock code={codes.planning} label="Réservé au CEO pour modifier" onUnlock={() => setCeoUnlocked(true)} />
         </Card>
       )}
 
@@ -973,6 +1334,128 @@ function TabPlanning({ planning, setPlanning }) {
     </div>
   );
 }
+/* ---------------------------------- TAB: DISPONIBILITÉS ÉQUIPE ---------------------------------- */
+function TabDispos({ dispos, setDispos, team }) {
+  const [whoAmI, setWhoAmI] = useState(null);
+  const [viewing, setViewing] = useState(null);
+  const days = Array.from({ length: 30 }, (_, i) => i + 1);
+
+  useEffect(() => {
+    if (!viewing && team.length) setViewing(team[0].id);
+  }, [team, viewing]);
+
+  const viewingMember = team.find(m => m.id === viewing);
+  const isEditing = whoAmI && whoAmI === viewing;
+  const dayData = dispos[viewing] || defaultDispoDays();
+
+  function updateDay(d, patch) {
+    if (!isEditing) return;
+    const memberDays = dispos[viewing] || defaultDispoDays();
+    setDispos({ ...dispos, [viewing]: { ...memberDays, [d]: { ...memberDays[d], ...patch } } });
+  }
+  function toggleDay(d) { updateDay(d, { disponible: !dayData[d]?.disponible }); }
+  function resetMine() {
+    if (!isEditing) return;
+    setDispos({ ...dispos, [viewing]: defaultDispoDays() });
+  }
+
+  const availableCount = days.filter(d => dayData[d]?.disponible).length;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <Card style={{ background: C.cardAlt }}>
+        <div style={{ fontSize: 13 }}>📅 Chaque membre indique ici ses jours et heures de disponibilité (Jour 1 à 30 du mois). Tout le monde peut consulter, mais seule la personne concernée peut modifier son propre calendrier.</div>
+      </Card>
+
+      {!whoAmI && (
+        <Card style={{ textAlign: "center" }}>
+          <Eyebrow>Qui es-tu ?</Eyebrow>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center", marginTop: 8 }}>
+            {team.map(m => (
+              <button key={m.id} onClick={() => { setWhoAmI(m.id); setViewing(m.id); }} style={{
+                padding: "8px 14px", borderRadius: 999, border: `1px solid ${C.border}`,
+                background: "transparent", color: C.text, fontSize: 13, fontWeight: 600, cursor: "pointer"
+              }}>{m.name}</button>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {whoAmI && (
+      <>
+        <div style={{ display: "flex", overflowX: "auto", gap: 6 }}>
+          {team.map(m => {
+            const active = viewing === m.id;
+            return (
+              <button key={m.id} onClick={() => setViewing(m.id)} style={{
+                display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap",
+                padding: "6px 10px", borderRadius: 999, fontSize: 12, fontWeight: 700,
+                border: `1px solid ${active ? m.color : C.border}`,
+                background: active ? "rgba(255,255,255,0.06)" : "transparent",
+                color: active ? m.color : C.muted, cursor: "pointer", flexShrink: 0
+              }}>{m.name}{m.id === whoAmI ? " (toi)" : ""}</button>
+            );
+          })}
+        </div>
+
+        <Card style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 12, color: C.muted }}>Jours disponibles — {viewingMember?.name}</div>
+          <div style={{ fontFamily: "Sora, sans-serif", fontSize: 22, fontWeight: 800, color: C.white }}>{availableCount} / 30</div>
+        </Card>
+
+        <Card>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <Eyebrow>{isEditing ? "Ton calendrier (modifiable)" : `Calendrier de ${viewingMember?.name} (lecture seule)`}</Eyebrow>
+            {isEditing && <button onClick={resetMine} style={iconBtn}><RotateCcw size={12} /> Réinitialiser</button>}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6 }}>
+            {days.map(d => {
+              const av = dayData[d]?.disponible;
+              return (
+                <button key={d}
+                  onClick={() => toggleDay(d)}
+                  title={[dayData[d]?.heure, dayData[d]?.note].filter(Boolean).join(" — ")}
+                  style={{
+                    aspectRatio: "1", borderRadius: 8, border: `1px solid ${av ? C.greenLight : C.white}`,
+                    background: av ? "rgba(60,190,124,0.18)" : "rgba(255,255,255,0.10)",
+                    color: av ? C.greenLight : C.white, fontWeight: 700, fontSize: 13,
+                    cursor: isEditing ? "pointer" : "default", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", lineHeight: 1.1
+                  }}>
+                  {d}
+                  {av && dayData[d]?.heure && <span style={{ fontSize: 8, fontWeight: 600 }}>{dayData[d].heure}</span>}
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ display: "flex", gap: 14, marginTop: 10, fontSize: 11, color: C.muted }}>
+            <span><span style={{ color: C.white }}>●</span> Indisponible</span>
+            <span><span style={{ color: C.greenLight }}>●</span> Disponible</span>
+          </div>
+        </Card>
+
+        {isEditing && (
+          <Card>
+            <Eyebrow>Ajouter une heure et une note sur un jour disponible</Eyebrow>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+              {days.filter(d => dayData[d]?.disponible).map(d => (
+                <div key={d} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <span style={{ width: 26, fontSize: 12, fontWeight: 700, color: C.greenLight }}>J{d}</span>
+                  <input type="time" value={dayData[d]?.heure || ""} onChange={e => updateDay(d, { heure: e.target.value })} style={{ ...inputStyle, width: 90, fontSize: 12, padding: "6px 8px" }} />
+                  <input placeholder="Ex: dispo l'après-midi, sur RDV…" value={dayData[d]?.note || ""} onChange={e => updateDay(d, { note: e.target.value })} style={{ ...inputStyle, flex: 1, fontSize: 12, padding: "6px 8px" }} />
+                </div>
+              ))}
+              {availableCount === 0 && <div style={{ fontSize: 12, color: C.muted }}>Coche un jour disponible ci-dessus pour ajouter une heure.</div>}
+            </div>
+          </Card>
+        )}
+
+        <button onClick={() => setWhoAmI(null)} style={{ ...iconBtn, alignSelf: "center" }}>Changer d'identité</button>
+      </>
+      )}
+    </div>
+  );
+}
+
 function TabOutils() {
   const [open, setOpen] = useState(AI_TOOLS[0].cat);
   return (
@@ -1092,7 +1575,7 @@ function ScriptLine({ label, text, color }) {
 }
 
 /* ---------------------------------- TAB: TRÉSORERIE ---------------------------------- */
-function TabTresorerie({ prospects, setProspects, expenses, setExpenses, totalCA, totalCommission, totalDepenses, beneficeNet, team }) {
+function TabTresorerie({ prospects, setProspects, expenses, setExpenses, totalCA, totalCommission, totalDepenses, beneficeNet, team, codes }) {
   const [form, setForm] = useState({ label: "", categorie: DEPENSES_CATEGORIES[0], montant: "", addedBy: team[0]?.id || "" });
   const [catherineUnlocked, setCatherineUnlocked] = useState(false);
   const clientsPayants = prospects.filter(p => Number(p.montant) > 0);
@@ -1151,7 +1634,7 @@ function TabTresorerie({ prospects, setProspects, expenses, setExpenses, totalCA
               <button onClick={addExpense} style={btnGold}><Plus size={14} /> Ajouter la dépense</button>
             </div>
           ) : (
-            <MiniUnlock code={CATHERINE_CODE} label="Réservé à Catherine" onUnlock={() => setCatherineUnlocked(true)} />
+            <MiniUnlock code={codes.catherine} label="Réservé à Catherine" onUnlock={() => setCatherineUnlocked(true)} />
           )}
         </Card>
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
@@ -1588,27 +2071,62 @@ function TabLiens({ links, setLinks, team }) {
 }
 
 /* ---------------------------------- TAB: ADMINISTRATION ---------------------------------- */
-function TabAdministration({ team, setTeam }) {
+function TabAdministration({ team, setTeam, codes, setCodes, onResetAll, agency, setAgency }) {
   const [adminUnlocked, setAdminUnlocked] = useState(false);
   const [form, setForm] = useState({ name: "", role: "", checklistText: "" });
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({ name: "", role: "", checklistText: "", code: "" });
+  const [codesForm, setCodesForm] = useState(codes);
+  const [codesSaved, setCodesSaved] = useState(false);
+  const [agencyForm, setAgencyForm] = useState(agency);
+  const [agencySaved, setAgencySaved] = useState(false);
+  const [resetConfirm, setResetConfirm] = useState(false);
+  const [resetDone, setResetDone] = useState(false);
 
   function addMember() {
     if (!form.name.trim()) return;
     const id = form.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 24) + "-" + Date.now().toString().slice(-4);
     const color = TEAM_COLORS[team.length % TEAM_COLORS.length];
     const checklist = form.checklistText.split(",").map(s => s.trim()).filter(Boolean);
-    setTeam([...team, { id, name: form.name, role: form.role || "Membre de l'équipe", color, checklist: checklist.length ? checklist : ["Vérifier les tâches du jour", "Mettre à jour son suivi", "Communiquer avec l'équipe"] }]);
+    setTeam([...team, { id, name: form.name, role: form.role || "Membre de l'équipe", color, code: autoCode(form.name),
+      checklist: checklist.length ? checklist : ["Vérifier les tâches du jour", "Mettre à jour son suivi", "Communiquer avec l'équipe"] }]);
     setForm({ name: "", role: "", checklistText: "" });
   }
   function removeMember(id) {
     if (team.length <= 1) return;
     setTeam(team.filter(m => m.id !== id));
+    if (editingId === id) setEditingId(null);
+  }
+  function startEdit(m) {
+    setEditingId(m.id);
+    setEditForm({ name: m.name, role: m.role, checklistText: (m.checklist || []).join(", "), code: m.code || autoCode(m.name) });
+  }
+  function saveEdit(id) {
+    const checklist = editForm.checklistText.split(",").map(s => s.trim()).filter(Boolean);
+    setTeam(team.map(m => m.id === id ? { ...m, name: editForm.name || m.name, role: editForm.role, code: editForm.code || m.code, checklist } : m));
+    setEditingId(null);
+  }
+  function saveCodes() {
+    setCodes(codesForm);
+    setCodesSaved(true);
+    setTimeout(() => setCodesSaved(false), 2000);
+  }
+  function saveAgency() {
+    setAgency(agencyForm);
+    setAgencySaved(true);
+    setTimeout(() => setAgencySaved(false), 2000);
+  }
+  function confirmReset() {
+    onResetAll();
+    setResetConfirm(false);
+    setResetDone(true);
+    setTimeout(() => setResetDone(false), 2500);
   }
 
   if (!adminUnlocked) {
     return (
       <Card style={{ textAlign: "center" }}>
-        <MiniUnlock code={ADMIN_CODE} label="Zone Administration — réservée au CEO" onUnlock={() => setAdminUnlocked(true)} />
+        <MiniUnlock code={codes.admin} label="Zone Administration — réservée au CEO" onUnlock={() => setAdminUnlocked(true)} />
       </Card>
     );
   }
@@ -1618,21 +2136,43 @@ function TabAdministration({ team, setTeam }) {
       <div>
         <H2>Équipe actuelle ({team.length})</H2>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {team.map(m => (
-            <Card key={m.id}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{ width: 10, height: 10, borderRadius: 999, background: m.color }} />
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: 13.5 }}>{m.name}</div>
-                    <div style={{ fontSize: 11.5, color: C.muted }}>{m.role}</div>
+          {team.map(m => {
+            const editing = editingId === m.id;
+            return (
+              <Card key={m.id}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ width: 10, height: 10, borderRadius: 999, background: m.color }} />
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 13.5 }}>{m.name}</div>
+                      <div style={{ fontSize: 11.5, color: C.muted }}>{m.role}</div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button onClick={() => editing ? setEditingId(null) : startEdit(m)} style={{ background: "none", border: "none", color: C.goldLight, cursor: "pointer" }}>
+                      {editing ? <X size={16} /> : <Pencil size={15} />}
+                    </button>
+                    {team.length > 1 && <button onClick={() => removeMember(m.id)} style={{ background: "none", border: "none", color: C.rustLight, cursor: "pointer" }}><Trash2 size={16} /></button>}
                   </div>
                 </div>
-                {team.length > 1 && <button onClick={() => removeMember(m.id)} style={{ background: "none", border: "none", color: C.rustLight, cursor: "pointer" }}><Trash2 size={16} /></button>}
-              </div>
-            </Card>
-          ))}
+
+                {editing && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10, borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
+                    <input placeholder="Nom" value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })} style={inputStyle} />
+                    <input placeholder="Rôle / statut" value={editForm.role} onChange={e => setEditForm({ ...editForm, role: e.target.value })} style={inputStyle} />
+                    <textarea placeholder="Checklist quotidienne (séparée par des virgules)" value={editForm.checklistText} onChange={e => setEditForm({ ...editForm, checklistText: e.target.value })} style={{ ...inputStyle, minHeight: 60, resize: "vertical" }} />
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <KeyRound size={14} color={C.muted} />
+                      <input placeholder="Code personnel (checklist)" value={editForm.code} onChange={e => setEditForm({ ...editForm, code: e.target.value.toUpperCase() })} style={{ ...inputStyle, flex: 1 }} />
+                    </div>
+                    <button onClick={() => saveEdit(m.id)} style={btnGold}><Save size={14} /> Enregistrer</button>
+                  </div>
+                )}
+              </Card>
+            );
+          })}
         </div>
+        <div style={{ color: C.muted, fontSize: 11.5, marginTop: 6 }}>Le crayon permet de modifier le nom, le rôle, la checklist et le code personnel de chaque membre — uniquement pour cette personne.</div>
       </div>
 
       <div>
@@ -1646,20 +2186,76 @@ function TabAdministration({ team, setTeam }) {
             <button onClick={addMember} style={btnGold}><UserPlus size={14} /> Ajouter à l'équipe</button>
           </div>
         </Card>
-        <div style={{ color: C.muted, fontSize: 11.5, marginTop: 6 }}>La personne apparaît immédiatement dans le CRM, la Trésorerie, le Kanban et les Liens partagés — aucune modification de code nécessaire.</div>
+        <div style={{ color: C.muted, fontSize: 11.5, marginTop: 6 }}>La personne apparaît immédiatement dans le CRM, la Trésorerie, le Kanban, les Disponibilités et les Liens partagés, avec un code personnel généré automatiquement (modifiable ensuite avec le crayon).</div>
       </div>
 
       <div>
-        <H2>Codes d'accès (référence CEO)</H2>
+        <H2>Codes d'accès — modifiables</H2>
         <Card>
           <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 12.5 }}>
-            <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: C.muted }}>Mot de passe général de l'outil</span><span style={{ fontWeight: 700, color: C.goldLight }}>{APP_PASSWORD}</span></div>
-            <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: C.muted }}>Objectif (modifier le montant cible)</span><span style={{ fontWeight: 700, color: C.goldLight }}>{CEO_CODE}</span></div>
-            <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: C.muted }}>CRM & Trésorerie (Catherine)</span><span style={{ fontWeight: 700, color: C.goldLight }}>{CATHERINE_CODE}</span></div>
-            <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: C.muted }}>Mon Planning (agenda CEO)</span><span style={{ fontWeight: 700, color: C.goldLight }}>{PLANNING_CODE}</span></div>
-            <div style={{ display: "flex", justifyContent: "space-between" }}><span style={{ color: C.muted }}>Administration (cette section)</span><span style={{ fontWeight: 700, color: C.goldLight }}>{ADMIN_CODE}</span></div>
+            <label style={{ color: C.muted }}>Mot de passe général de l'outil
+              <input value={codesForm.app} onChange={e => setCodesForm({ ...codesForm, app: e.target.value.toUpperCase() })} style={{ ...inputStyle, marginTop: 4 }} />
+            </label>
+            <label style={{ color: C.muted }}>Objectif (modifier le montant cible)
+              <input value={codesForm.ceo} onChange={e => setCodesForm({ ...codesForm, ceo: e.target.value.toUpperCase() })} style={{ ...inputStyle, marginTop: 4 }} />
+            </label>
+            <label style={{ color: C.muted }}>CRM & Trésorerie (Catherine)
+              <input value={codesForm.catherine} onChange={e => setCodesForm({ ...codesForm, catherine: e.target.value.toUpperCase() })} style={{ ...inputStyle, marginTop: 4 }} />
+            </label>
+            <label style={{ color: C.muted }}>Mon Planning (agenda CEO)
+              <input value={codesForm.planning} onChange={e => setCodesForm({ ...codesForm, planning: e.target.value.toUpperCase() })} style={{ ...inputStyle, marginTop: 4 }} />
+            </label>
+            <label style={{ color: C.muted }}>Administration (cette section)
+              <input value={codesForm.admin} onChange={e => setCodesForm({ ...codesForm, admin: e.target.value.toUpperCase() })} style={{ ...inputStyle, marginTop: 4 }} />
+            </label>
           </div>
-          <div style={{ color: C.muted, fontSize: 11, marginTop: 10 }}>Chaque code est indépendant : connaître l'un ne donne accès à aucun autre. Dis-moi si tu veux en changer un.</div>
+          <button onClick={saveCodes} style={{ ...btnGold, marginTop: 10 }}><Save size={14} /> {codesSaved ? "Enregistré ✓" : "Enregistrer les codes"}</button>
+          <div style={{ color: C.muted, fontSize: 11, marginTop: 10 }}>Chaque code est indépendant : connaître l'un ne donne accès à aucun autre. Les codes personnels de checklist se modifient individuellement ci-dessus, dans la fiche de chaque membre.</div>
+        </Card>
+      </div>
+
+      <div>
+        <H2>Coordonnées de l'agence (reçus & devis PDF)</H2>
+        <Card>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 12.5 }}>
+            <label style={{ color: C.muted }}>Nom de l'entreprise
+              <input value={agencyForm.name} onChange={e => setAgencyForm({ ...agencyForm, name: e.target.value })} style={{ ...inputStyle, marginTop: 4 }} />
+            </label>
+            <label style={{ color: C.muted }}>Email
+              <input value={agencyForm.email} onChange={e => setAgencyForm({ ...agencyForm, email: e.target.value })} style={{ ...inputStyle, marginTop: 4 }} />
+            </label>
+            <label style={{ color: C.muted }}>Téléphone 1
+              <input value={agencyForm.phone1} onChange={e => setAgencyForm({ ...agencyForm, phone1: e.target.value })} style={{ ...inputStyle, marginTop: 4 }} />
+            </label>
+            <label style={{ color: C.muted }}>Téléphone 2 (optionnel)
+              <input value={agencyForm.phone2} onChange={e => setAgencyForm({ ...agencyForm, phone2: e.target.value })} style={{ ...inputStyle, marginTop: 4 }} />
+            </label>
+            <label style={{ color: C.muted }}>Adresse (optionnel)
+              <input value={agencyForm.address} onChange={e => setAgencyForm({ ...agencyForm, address: e.target.value })} style={{ ...inputStyle, marginTop: 4 }} />
+            </label>
+          </div>
+          <button onClick={saveAgency} style={{ ...btnGold, marginTop: 10 }}><Save size={14} /> {agencySaved ? "Enregistré ✓" : "Enregistrer les coordonnées"}</button>
+          <div style={{ color: C.muted, fontSize: 11, marginTop: 10 }}>Ces informations apparaissent automatiquement en en-tête et en pied de page de chaque reçu et devis PDF.</div>
+        </Card>
+      </div>
+
+      <div>
+        <H2>Zone dangereuse</H2>
+        <Card style={{ borderColor: C.rust }}>
+          <Eyebrow>Réinitialiser toutes les données</Eyebrow>
+          <div style={{ fontSize: 12.5, color: C.muted, marginTop: 4 }}>Efface tous les clients, dépenses, dettes, prospections, tâches Kanban, coches de checklist, disponibilités et liens — remet l'objectif à 250 000 FCFA. L'équipe et les codes d'accès ne sont pas touchés. Action irréversible.</div>
+          {!resetConfirm ? (
+            <button onClick={() => setResetConfirm(true)} style={{ ...iconBtn, marginTop: 10, color: C.rustLight, borderColor: C.rust, padding: "8px 12px" }}>
+              <RefreshCw size={13} /> Tout réinitialiser
+            </button>
+          ) : (
+            <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center" }}>
+              <span style={{ fontSize: 12, color: C.rustLight, fontWeight: 700 }}>Confirmer ?</span>
+              <button onClick={confirmReset} style={{ ...btnGold, width: "auto", padding: "8px 14px", background: C.rust, color: C.white }}>Oui, tout effacer</button>
+              <button onClick={() => setResetConfirm(false)} style={iconBtn}>Annuler</button>
+            </div>
+          )}
+          {resetDone && <div style={{ fontSize: 12, color: C.greenLight, marginTop: 8 }}>✓ Données réinitialisées.</div>}
         </Card>
       </div>
     </div>
