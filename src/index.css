@@ -32,7 +32,7 @@ input, button {
     overflow-x: visible !important;
     justify-content: center;
   }
-  .kbs-navbar button {
+  .kbs-navbar > div {
     flex-shrink: 1 !important;
   }
 }
@@ -41,5 +41,8 @@ input, button {
 @media (hover: hover) {
   button:hover {
     filter: brightness(1.08);
+  }
+  .kbs-navbar > div:hover {
+    filter: brightness(1.12);
   }
 }
