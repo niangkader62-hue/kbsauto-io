@@ -8,7 +8,7 @@ import {
   CheckCircle2, Circle, RotateCcw, TrendingUp, Banknote, Flame, GraduationCap,
   Award, TrendingDown, Lock, LogOut, CalendarClock, Send, History, FileText,
   Shield, UserPlus, AlertTriangle, Search, Copy, Radar, CalendarCheck,
-  Pencil, Save, KeyRound, RefreshCw, X, MapPin
+  Pencil, Save, KeyRound, RefreshCw, X, MapPin, BookOpen
 } from "lucide-react";
 
 /* ---------------------------------- SUPABASE ---------------------------------- */
@@ -19,9 +19,9 @@ const supabase = createClient(
 
 /* ---------------------------------- PALETTE ---------------------------------- */
 const C = {
-  bg: "#0A1310", card: "#111E17", cardAlt: "#16261C", border: "#243828",
-  gold: "#C9A227", goldLight: "#E4C158", green: "#1F7A4D", greenLight: "#3CBE7C",
-  rust: "#B7402F", rustLight: "#DD6A54", text: "#F2EDE4", muted: "#93A392",
+  bg: "#0D0D0D", card: "#1C1C1C", cardAlt: "#262626", border: "#333333",
+  gold: "#D66729", goldLight: "#E8894A", green: "#1F7A4D", greenLight: "#3CBE7C",
+  rust: "#B7402F", rustLight: "#DD6A54", text: "#F5F5F5", muted: "#8C8C8C",
   white: "#FFFFFF",
 };
 
@@ -795,7 +795,7 @@ function fcfa(n) { return `${Number(n || 0).toLocaleString("fr-FR")} FCFA`; }
 function MiniUnlock({ code, label, onUnlock }) {
   const [input, setInput] = useState("");
   const [error, setError] = useState(false);
-  function tryUnlock() { if (input === code) onUnlock(); else setError(true); }
+  function tryUnlock() { if (input.trim().toUpperCase() === (code || "").trim().toUpperCase()) onUnlock(); else setError(true); }
   return (
     <div style={{ marginTop: 10, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
       <div style={{ fontSize: 11, color: C.muted, display: "flex", alignItems: "center", gap: 4 }}><Lock size={11} /> {label}</div>
@@ -907,6 +907,7 @@ export default function App() {
     plan: { label: "Plan 30 jours", icon: CalendarDays },
     liens: { label: "Liens partagés", icon: Link2 },
     administration: { label: "Administration", icon: Shield },
+    formation: { label: "Formation", icon: BookOpen },
   };
 
   const CATEGORIES = [
@@ -914,6 +915,7 @@ export default function App() {
     { id: "ventes", label: "Ventes & Finance", icon: Wallet, tabs: ["crm", "devis", "tresorerie", "dettes", "tarifs"] },
     { id: "marketing", label: "Marketing", icon: Flame, tabs: ["cible", "copywriting", "prospection", "terrain"] },
     { id: "ressources", label: "Ressources", icon: Sparkles, tabs: ["outils", "academie", "plan", "liens"] },
+    { id: "formationCat", label: "Formation", icon: BookOpen, tabs: ["formation"] },
     { id: "admin", label: "Administration", icon: Shield, tabs: ["administration"] },
   ];
 
@@ -937,56 +939,67 @@ export default function App() {
       <div style={{ padding: "20px 16px 12px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <img src={`data:image/png;base64,${LOGO_B64}`} alt="KBS" style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0 }} />
+            <img src={`data:image/png;base64,${LOGO_B64}`} alt="KBSAUTO" style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0 }} />
             <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-              <span style={{ fontFamily: "Sora, sans-serif", fontWeight: 800, fontSize: 22, color: C.gold }}>KBS</span>
-              <span style={{ fontFamily: "Sora, sans-serif", fontWeight: 700, fontSize: 16 }}>Digital Agency</span>
+              <span style={{ fontFamily: "Sora, sans-serif", fontWeight: 800, fontSize: 22, color: C.gold }}>KBSAUTO</span>
             </div>
           </div>
-          <div style={{ color: C.muted, fontSize: 12.5, marginTop: 2, marginLeft: 44 }}>QG de l'équipe — Stratégie, Ventes & Production</div>
+          <div style={{ color: C.muted, fontSize: 12.5, marginTop: 2, marginLeft: 44 }}>KBS Digital Agency — QG de l'équipe</div>
         </div>
         <button onClick={() => setUnlocked(false)} style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: `1px solid ${C.border}`, borderRadius: 8, color: C.muted, padding: "6px 10px", fontSize: 12, cursor: "pointer", flexShrink: 0 }}>
           <LogOut size={13} /> Déconnexion
         </button>
       </div>
 
-      {/* CATEGORY BAR */}
-      <div className="kbs-navbar" style={{ display: "flex", overflowX: "auto", gap: 6, padding: "10px 12px 6px", background: C.cardAlt }}>
-        {CATEGORIES.map(c => {
-          const Icon = c.icon;
-          const active = category === c.id;
-          return (
-            <button key={c.id} onClick={() => selectCategory(c.id)} style={{
-              display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap",
-              padding: "8px 12px", borderRadius: 999, fontSize: 13, fontWeight: 700,
-              border: `1px solid ${active ? C.gold : C.border}`,
-              background: active ? C.gold : "transparent",
-              color: active ? "#1A1300" : C.text, flexShrink: 0, cursor: "pointer"
-            }}>
-              <Icon size={14} /> {c.label}
-            </button>
-          );
-        })}
+      {/* CATEGORY BAR — cartes défilantes horizontalement */}
+      <div style={{ position: "relative", background: C.cardAlt }}>
+        <div className="kbs-navbar" style={{ display: "flex", overflowX: "auto", gap: 10, padding: "12px 14px 8px", scrollSnapType: "x proximity" }}>
+          {CATEGORIES.map(c => {
+            const Icon = c.icon;
+            const active = category === c.id;
+            return (
+              <div key={c.id} onClick={() => selectCategory(c.id)} style={{
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
+                flexShrink: 0, width: 74, cursor: "pointer", scrollSnapAlign: "start"
+              }}>
+                <div style={{
+                  width: 48, height: 48, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center",
+                  background: active ? `linear-gradient(135deg, ${C.goldLight}, ${C.gold})` : C.card,
+                  border: `1px solid ${active ? C.gold : C.border}`,
+                  boxShadow: active ? `0 4px 14px rgba(214,103,41,0.4)` : "none",
+                }}>
+                  <Icon size={19} color={active ? "#1A0F00" : C.muted} />
+                </div>
+                <span style={{ fontSize: 11, fontWeight: 700, textAlign: "center", lineHeight: 1.2, color: active ? C.goldLight : C.muted }}>{c.label}</span>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ position: "absolute", top: 0, bottom: 0, right: 0, width: 22, background: `linear-gradient(270deg, ${C.cardAlt}, transparent)`, pointerEvents: "none" }} />
       </div>
 
-      {/* SUB-TAB BAR */}
-      <div className="kbs-navbar" style={{ display: "flex", overflowX: "auto", gap: 6, padding: "6px 12px 10px", borderBottom: `1px solid ${C.border}`, background: C.cardAlt }}>
-        {CATEGORIES.find(c => c.id === category).tabs.map(tid => {
-          const meta = TAB_META[tid];
-          const Icon = meta.icon;
-          const active = tab === tid;
-          return (
-            <button key={tid} onClick={() => setTab(tid)} style={{
-              display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap",
-              padding: "6px 10px", borderRadius: 999, fontSize: 12, fontWeight: 600,
-              border: `1px solid ${active ? C.greenLight : C.border}`,
-              background: active ? "rgba(60,190,124,0.15)" : "transparent",
-              color: active ? C.greenLight : C.muted, flexShrink: 0, cursor: "pointer"
-            }}>
-              <Icon size={12} /> {meta.label}
-            </button>
-          );
-        })}
+      {/* SUB-TAB BAR — cartes défilantes plus petites */}
+      <div style={{ position: "relative", background: C.cardAlt, borderBottom: `1px solid ${C.border}` }}>
+        <div className="kbs-navbar" style={{ display: "flex", overflowX: "auto", gap: 8, padding: "4px 14px 10px", scrollSnapType: "x proximity" }}>
+          {CATEGORIES.find(c => c.id === category).tabs.map(tid => {
+            const meta = TAB_META[tid];
+            const Icon = meta.icon;
+            const active = tab === tid;
+            return (
+              <div key={tid} onClick={() => setTab(tid)} style={{
+                display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap",
+                padding: "8px 13px", borderRadius: 12, fontSize: 12.5, fontWeight: 700,
+                border: `1px solid ${active ? C.gold : C.border}`,
+                background: active ? "rgba(214,103,41,0.16)" : C.card,
+                color: active ? C.goldLight : C.muted, flexShrink: 0, cursor: "pointer",
+                scrollSnapAlign: "start"
+              }}>
+                <Icon size={13} /> {meta.label}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ position: "absolute", top: 0, bottom: 0, right: 0, width: 22, background: `linear-gradient(270deg, ${C.cardAlt}, transparent)`, pointerEvents: "none" }} />
       </div>
 
       <div className="kbs-content" style={{ padding: 16, maxWidth: 720, margin: "0 auto" }}>
@@ -1008,6 +1021,7 @@ export default function App() {
         {tab === "plan" && <TabPlan />}
         {tab === "liens" && <TabLiens links={links} setLinks={setLinks} team={team} />}
         {tab === "administration" && <TabAdministration team={team} setTeam={setTeam} codes={codes} setCodes={setCodes} onResetAll={resetAllData} agency={agency} setAgency={setAgency} />}
+        {tab === "formation" && <TabFormation team={team} codes={codes} />}
       </div>
       </div>
       )}
@@ -1021,14 +1035,15 @@ function LoginScreen({ onUnlock, codes }) {
   const [error, setError] = useState(false);
 
   function tryUnlock() {
-    if (pwd === codes.app) { setError(false); onUnlock(); }
+    if (pwd.trim().toUpperCase() === (codes.app || "").trim().toUpperCase()) { setError(false); onUnlock(); }
     else { setError(true); }
   }
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 }}>
-      <img src={`data:image/png;base64,${LOGO_B64}`} alt="KBS Digital Agency" style={{ width: 76, height: 76, borderRadius: 18, marginBottom: 16, boxShadow: `0 0 0 1px ${C.border}` }} />
-      <div style={{ fontFamily: "Sora, sans-serif", fontWeight: 800, fontSize: 20, marginBottom: 4 }}>KBS Digital Agency</div>
+      <img src={`data:image/png;base64,${LOGO_B64}`} alt="KBSAUTO" style={{ width: 76, height: 76, borderRadius: 18, marginBottom: 16, boxShadow: `0 0 0 1px ${C.border}` }} />
+      <div style={{ fontFamily: "Sora, sans-serif", fontWeight: 800, fontSize: 22, marginBottom: 2 }}>KBSAUTO</div>
+      <div style={{ color: C.muted, fontSize: 12.5, marginBottom: 16 }}>KBS Digital Agency</div>
       <div style={{ color: C.muted, fontSize: 13, marginBottom: 20, textAlign: "center" }}>Accès réservé à l'équipe — entre le code d'accès</div>
       <div style={{ width: "100%", maxWidth: 280, display: "flex", flexDirection: "column", gap: 10 }}>
         <input
@@ -1419,7 +1434,7 @@ function TabKanban({ kanban, setKanban, checks, setChecks, team, codes }) {
   }
   function tryUnlockMine() {
     const member = team.find(m => m.id === whoPicker);
-    if (member && unlockCode === (member.code || "")) { setMyUnlock(member.id); setUnlockError(false); setUnlockCode(""); }
+    if (member && unlockCode.trim().toUpperCase() === (member.code || "").trim().toUpperCase()) { setMyUnlock(member.id); setUnlockError(false); setUnlockCode(""); }
     else setUnlockError(true);
   }
 
@@ -2407,6 +2422,283 @@ function TabLiens({ links, setLinks, team }) {
           </Card>
         ))}
       </div>
+    </div>
+  );
+}
+
+/* ---------------------------------- FORMATION: DONNEES DES GUIDES ---------------------------------- */
+const GUIDES = {
+  catherine: {
+    person: "Catherine",
+    title: "Guide CRM & Communication Client",
+    sections: [
+      { heading: "Ta posture", items: [
+        "Tu es le premier visage professionnel de KBS DIGITAL AGENCY.",
+        "Tu réponds vite — moins de 30 min en journée. Un client qui attend va voir ailleurs.",
+        "Tu ne mens jamais sur un délai, un prix ou une prestation.",
+        "Tu gardes le contrôle poli de la conversation — c'est toi qui poses les questions.",
+      ]},
+      { heading: "Les 3 canaux, 3 façons de parler", items: [
+        "Groupes / commentaires publics : réponse courte et chaleureuse, jamais commerciale. Objectif : faire passer en privé. Ne jamais négocier un prix en public.",
+        "WhatsApp privé : ici se fait 90% du travail réel. Toujours commencer par le prénom, jamais un message générique.",
+        "Appel vocal/vidéo : réservé aux clients chauds (Packs 3, 4, 6, 7 ou budget important).",
+      ]},
+      { heading: "La structure d'une conversation qui closes", items: [
+        "1. Accroche — remercier + montrer qu'on a compris la situation.",
+        "2. Qualification — 2-3 questions AVANT d'envoyer un tarif (besoin, budget, urgence).",
+        "3. Offre adaptée — jamais toute la liste de prix, 1 ou 2 solutions maximum.",
+        "4. Objection — voir ci-dessous.",
+        "5. Closing — voir ci-dessous.",
+      ]},
+      { heading: "Scripts prêts à adapter (avec nos vrais tarifs)", scripts: [
+        "Petit budget, vendre en ligne : « Pack 1 (Formation + Vente) à partir de 45 000 FCFA — formation e-commerce + accompagnement premières ventes. Formation seule : 20 000 FCFA en ligne. »",
+        "Présence pro complète : « Pack 4 (Présence Pro) à 170 000 FCFA : site + community management + branding. Un investissement pensé pour durer. »",
+        "Hésitant, besoin ponctuel : « On peut commencer petit : une page de vente à 25 000 FCFA, et évoluer vers un pack plus complet si les résultats plaisent. »",
+        "Relance douce (silence 2-3 jours) : « Je reviens vers vous — vous avez eu le temps de regarder l'offre ? Je reste dispo si vous avez des questions. »",
+      ]},
+      { heading: "Gérer les objections", rows: [
+        ["« C'est trop cher »", "« Regardons ensemble ce qui compte le plus, on peut ajuster la formule. »"],
+        ["« Je vais réfléchir »", "« Qu'est-ce qui vous ferait hésiter précisément ? »"],
+        ["« Pas confiance »", "Envoyer un exemple concret + devis/reçu officiel dès le 1er échange."],
+        ["« Un autre moins cher »", "« La différence : un suivi réel, pas juste une livraison. »"],
+      ]},
+      { heading: "Le closing", items: [
+        "Par choix : « On part sur la version en ligne ou en présentiel ? »",
+        "Par urgence légitime : « Je peux vous bloquer une place cette semaine, ensuite le planning se remplit. »",
+        "Par confirmation simple : « Je vous envoie le devis officiel maintenant, vous confirmez et on démarre. »",
+        "Après un closing réussi : toujours envoyer un devis/reçu PDF officiel dans les 10 minutes.",
+      ]},
+      { heading: "Finance & Trésorerie", items: [
+        "Chaque paiement reçu = reçu PDF envoyé immédiatement.",
+        "Chaque devis a une date de validité claire — ça crée une urgence naturelle.",
+        "Relance de paiement en retard : ferme mais respectueuse.",
+        "Un message = un objectif — ne jamais mélanger discussion technique et argent.",
+      ]},
+      { heading: "Checklist quotidienne", items: [
+        "Tous les messages de la veille ont une réponse",
+        "Aucun message resté plus de 30 min sans réponse",
+        "Chaque prospect qualifié (besoin + budget) avant envoi d'un prix",
+        "Chaque vente confirmée = devis/reçu PDF envoyé le jour même",
+        "Chaque impayé de +3 jours = relance envoyée",
+      ]},
+    ],
+  },
+  sacko: {
+    person: "Sacko",
+    title: "Guide d'Auto-Formation — Coordination & Graphisme",
+    sections: [
+      { heading: "Ta posture", items: [
+        "Double casquette : coordonner l'équipe et produire du visuel professionnel.",
+        "Règle : auto-formation active — pratique le jour même sur un vrai projet client.",
+        "1 nouvel outil ou technique appris = 1 application immédiate sur un visuel réel.",
+      ]},
+      { heading: "Applications & sites gratuits — Graphisme", rows: [
+        ["Canva (gratuit)", "Posts réseaux sociaux, carrousels, présentations"],
+        ["Adobe Express", "Visuels rapides, retouche simple"],
+        ["Figma (gratuit)", "Maquettes, pages de vente, cohérence visuelle"],
+        ["Remove.bg", "Détourage d'images en 1 clic"],
+        ["Inkscape (gratuit)", "Logos, vectoriel — alternative à Illustrator"],
+        ["CapCut", "Montage vidéo courts formats"],
+      ]},
+      { heading: "Intelligence Artificielle gratuite — Graphisme", items: [
+        "Canva IA — génération d'image + suppression d'arrière-plan intégrée, le plus simple pour démarrer.",
+        "Microsoft Designer — gratuit, très efficace pour bannières et posts LinkedIn/Instagram.",
+        "Adobe Firefly — génération d'image utilisable commercialement sans risque de droits d'auteur.",
+        "Leonardo AI / Krea.ai — génération plus créative, contrôle avancé.",
+        "Claude ou ChatGPT — pour rédiger tes prompts, structurer un brief, générer des idées de concepts.",
+        "Conseil clé : apprends d'abord à bien écrire un prompt avant de juger un outil.",
+      ]},
+      { heading: "Outils gratuits — Coordination", items: [
+        "Trello (gratuit) — Kanban visuel d'équipe, le plus simple pour démarrer.",
+        "Notion (gratuit) — centraliser notes, plannings et documents.",
+        "Google Agenda + Google Sheets — suivi de planning sans rien installer.",
+        "WhatsApp Business — messages automatiques, catalogue, étiquettes clients.",
+        "Astuce : commence par Trello seul 2 semaines avant d'ajouter un 2e outil.",
+      ]},
+      { heading: "Chaînes YouTube à suivre", items: [
+        "Balo — identité visuelle, redesign de logo, études de cas clients.",
+        "Emmanuel Correia — Photoshop, Illustrator, InDesign, tutoriels clairs.",
+        "AdobeFrance — nouveautés et astuces officielles Adobe.",
+        "PiXimperfect (anglais, sous-titres auto) — Photoshop niveau pro expliqué simplement.",
+      ]},
+      { heading: "Mots-clés à taper sur YouTube et TikTok", items: [
+        "graphisme débutant tuto / Canva tutoriel français",
+        "règles de composition design / théorie des couleurs design graphique",
+        "identité visuelle marque tuto / design post Instagram Canva",
+        "CapCut tutoriel français / motion design débutant",
+        "Canva IA astuce / Adobe Firefly tutoriel / prompt design IA débutant",
+        "Trello tutoriel français débutant / Notion organisation équipe",
+        "tendances graphisme 2026 / design trends 2026",
+      ]},
+      { heading: "Plan d'auto-formation — 4 premières semaines", items: [
+        "Semaine 1 — Bases Canva + configurer un Trello simple pour l'équipe.",
+        "Semaine 2 — Identité visuelle : regarder Balo/Emmanuel Correia, refaire un visuel client existant.",
+        "Semaine 3 — IA appliquée : Canva IA, Microsoft Designer, Adobe Firefly sur un client réel.",
+        "Semaine 4 — Coordination avancée : planning complet d'un projet sur Trello ou Notion.",
+      ]},
+      { heading: "Checklist hebdomadaire", items: [
+        "Au moins 1 nouvelle technique apprise et appliquée sur un vrai visuel",
+        "Planning de l'équipe à jour sur l'outil de coordination choisi",
+        "Une chaîne YouTube ou un mot-clé exploré cette semaine",
+        "Un visuel produit avec l'aide d'une IA, testé et validé",
+      ]},
+    ],
+  },
+  oumou: {
+    person: "Oumou",
+    title: "Guide d'Auto-Formation — Création de Contenu",
+    sections: [
+      { heading: "Ta posture", items: [
+        "Tu captes l'attention en 3 secondes — un contenu qui n'accroche pas est un contenu mort.",
+        "Chaque contenu doit répondre à : pourquoi quelqu'un s'arrêterait sur ça ?",
+      ]},
+      { heading: "Les fondamentaux d'un bon contenu", items: [
+        "Le hook — les 3 premières secondes ou la 1ère ligne, jamais un simple « Bonjour à tous ».",
+        "Le storytelling — raconter, pas juste informer : problème → solution → résultat.",
+        "Un seul message par contenu — ne jamais tout dire dans une seule vidéo ou post.",
+        "L'appel à l'action clair — dire explicitement ce que la personne doit faire.",
+        "La régularité — un contenu moyen publié 3x/semaine bat un contenu parfait 1x/mois.",
+      ]},
+      { heading: "Outils gratuits — Création", rows: [
+        ["Canva (gratuit)", "Posts, carrousels Instagram, miniatures"],
+        ["CapCut", "Montage Reels/TikTok, sous-titres automatiques"],
+        ["InShot", "Alternative simple à CapCut sur mobile"],
+        ["Adobe Express", "Visuels rapides, formats prêts par réseau"],
+      ]},
+      { heading: "Intelligence Artificielle gratuite — Contenu", items: [
+        "Claude ou ChatGPT — idées de hooks, structurer un script de Reel, décliner un message en plusieurs formats.",
+        "Canva Magic Media — génération d'images IA directement dans Canva.",
+        "Microsoft Designer / Bing Image Creator — génération gratuite, jusqu'à 100 images/jour.",
+        "Lumen5 — transforme un texte en vidéo courte automatiquement.",
+        "Conseil clé : utilise l'IA pour le 1er jet, réécris toujours avec ta propre voix.",
+      ]},
+      { heading: "Chaînes YouTube à suivre", items: [
+        "Les Mots Magiques — plus de 90 vidéos gratuites sur les fondamentaux du copywriting.",
+        "Yann Leonardi — copywriting, storytelling, cas pratiques réseaux sociaux.",
+        "Dan Noël — décryptage des algorithmes Instagram, TikTok et LinkedIn.",
+      ]},
+      { heading: "Mots-clés à taper sur YouTube et TikTok", items: [
+        "copywriting débutant / comment écrire une accroche",
+        "storytelling réseaux sociaux / légende Instagram qui convertit",
+        "créer du contenu TikTok débutant / script Reel Instagram",
+        "hook vidéo première seconde / content creator tips",
+        "algorithme TikTok 2026 / algorithme Instagram comment ça marche",
+        "ChatGPT idées de contenu / Canva IA astuce / prompt copywriting IA",
+        "tendances TikTok 2026 / format contenu qui marche 2026",
+      ]},
+      { heading: "Plan d'auto-formation — 4 premières semaines", items: [
+        "Semaine 1 — Les hooks : réécrire les 5 derniers posts KBS avec un vrai hook.",
+        "Semaine 2 — Storytelling : 3 posts en suivant problème → solution → résultat.",
+        "Semaine 3 — Formats courts : maîtriser CapCut, produire 2 Reels/TikTok test.",
+        "Semaine 4 — IA appliquée : 10 idées générées puis réécrites dans ton propre style.",
+      ]},
+      { heading: "Checklist par contenu (avant de publier)", items: [
+        "Le hook donne envie de rester dans les 3 premières secondes",
+        "Un seul message clair, pas trois idées mélangées",
+        "Appel à l'action explicite à la fin",
+        "Le texte sonne naturel, pas « généré par IA »",
+        "Le format est adapté à la plateforme (vertical TikTok/Reels, carré Instagram feed)",
+      ]},
+    ],
+  },
+};
+
+function GuideBlock({ section }) {
+  return (
+    <Card style={{ marginBottom: 10 }}>
+      <Eyebrow>{section.heading}</Eyebrow>
+      {section.items && (
+        <ul style={{ margin: "8px 0 0", paddingLeft: 18 }}>
+          {section.items.map((it, i) => <li key={i} style={{ fontSize: 13, color: C.text, marginBottom: 5, lineHeight: 1.45 }}>{it}</li>)}
+        </ul>
+      )}
+      {section.scripts && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+          {section.scripts.map((sc, i) => (
+            <div key={i} style={{ background: C.cardAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: 10, fontSize: 12.5, fontStyle: "italic", color: C.text }}>{sc}</div>
+          ))}
+        </div>
+      )}
+      {section.rows && (
+        <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+          {section.rows.map((r, i) => (
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "7px 0", borderBottom: i < section.rows.length - 1 ? `1px solid ${C.border}` : "none" }}>
+              <span style={{ fontSize: 12.5, color: C.muted, flex: "0 0 42%" }}>{r[0]}</span>
+              <span style={{ fontSize: 12.5, fontWeight: 600, flex: 1 }}>{r[1]}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/* ---------------------------------- TAB: FORMATION ---------------------------------- */
+function TabFormation({ team, codes }) {
+  const [code, setCode] = useState("");
+  const [error, setError] = useState(false);
+  const [unlockedId, setUnlockedId] = useState(null);
+  const [viewing, setViewing] = useState(null);
+
+  function tryUnlock() {
+    const c = code.trim().toUpperCase();
+    if (c === (codes.admin || "").trim().toUpperCase()) {
+      const first = Object.keys(GUIDES)[0];
+      setUnlockedId("admin"); setError(false); setCode(""); setViewing(first);
+      return;
+    }
+    const member = team.find(m => (m.code || "").trim().toUpperCase() === c);
+    if (member && GUIDES[member.id]) {
+      setUnlockedId(member.id); setError(false); setCode(""); setViewing(member.id);
+      return;
+    }
+    setError(true);
+  }
+
+  if (!unlockedId) {
+    return (
+      <div>
+        <H2>Formation</H2>
+        <Card>
+          <Eyebrow>Ton guide personnel</Eyebrow>
+          <div style={{ color: C.muted, fontSize: 12, margin: "6px 0 10px" }}>Entre ton code personnel pour voir ton guide. Le CEO peut voir les 3 guides avec le code Administration.</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input type="password" placeholder="Ton code" value={code}
+              onChange={e => { setCode(e.target.value); setError(false); }}
+              onKeyDown={e => { if (e.key === "Enter") tryUnlock(); }}
+              style={{ ...inputStyle, flex: 1 }} />
+            <button onClick={tryUnlock} style={{ ...iconBtn, padding: "0 16px" }}>OK</button>
+          </div>
+          {error && <div style={{ color: C.rustLight, fontSize: 11, marginTop: 6 }}>Code incorrect.</div>}
+        </Card>
+      </div>
+    );
+  }
+
+  const availableGuides = unlockedId === "admin" ? Object.keys(GUIDES) : [unlockedId];
+  const guide = GUIDES[viewing] || GUIDES[availableGuides[0]];
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <H2>Formation</H2>
+        <button onClick={() => { setUnlockedId(null); setViewing(null); }} style={iconBtn}><Lock size={12} /></button>
+      </div>
+      {availableGuides.length > 1 && (
+        <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
+          {availableGuides.map(gid => (
+            <button key={gid} onClick={() => setViewing(gid)} style={{
+              padding: "6px 12px", borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: "pointer",
+              border: `1px solid ${viewing === gid ? C.gold : C.border}`,
+              background: viewing === gid ? "rgba(214,103,41,0.16)" : "transparent",
+              color: viewing === gid ? C.goldLight : C.muted,
+            }}>{GUIDES[gid].person}</button>
+          ))}
+        </div>
+      )}
+      <div style={{ fontFamily: "Sora, sans-serif", fontWeight: 800, fontSize: 17, marginBottom: 2 }}>{guide.title}</div>
+      <div style={{ color: C.muted, fontSize: 12, marginBottom: 12 }}>KBS DIGITAL AGENCY — {guide.person}</div>
+      {guide.sections.map((s, i) => <GuideBlock key={i} section={s} />)}
     </div>
   );
 }
