@@ -840,6 +840,7 @@ export default function App() {
   const [codes, setCodes] = useState(DEFAULT_CODES);
   const [agency, setAgency] = useState(DEFAULT_AGENCY);
   const [devis, setDevis] = useState([]);
+  const [guides, setGuides] = useState(DEFAULT_GUIDES);
 
   useEffect(() => {
     (async () => {
@@ -857,6 +858,7 @@ export default function App() {
       setCodes(await loadShared("kbs:codes", DEFAULT_CODES));
       setAgency(await loadShared("kbs:agency", DEFAULT_AGENCY));
       setDevis(await loadShared("kbs:devis", []));
+      setGuides(await loadShared("kbs:guides", DEFAULT_GUIDES));
       setLoaded(true);
     })();
   }, []);
@@ -875,6 +877,7 @@ export default function App() {
   useEffect(() => { if (loaded) saveShared("kbs:codes", codes); }, [codes, loaded]);
   useEffect(() => { if (loaded) saveShared("kbs:agency", agency); }, [agency, loaded]);
   useEffect(() => { if (loaded) saveShared("kbs:devis", devis); }, [devis, loaded]);
+  useEffect(() => { if (loaded) saveShared("kbs:guides", guides); }, [guides, loaded]);
 
   const totalCA = useMemo(() => prospects.reduce((s, p) => s + (Number(p.montant) || 0), 0), [prospects]);
   const totalCommission = totalCA * 0.25;
@@ -1028,8 +1031,8 @@ export default function App() {
         {tab === "academie" && <TabAcademie />}
         {tab === "plan" && <TabPlan />}
         {tab === "liens" && <TabLiens links={links} setLinks={setLinks} team={team} />}
-        {tab === "administration" && <TabAdministration team={team} setTeam={setTeam} codes={codes} setCodes={setCodes} onResetAll={resetAllData} agency={agency} setAgency={setAgency} />}
-        {tab === "formation" && <TabFormation team={team} codes={codes} />}
+        {tab === "administration" && <TabAdministration team={team} setTeam={setTeam} codes={codes} setCodes={setCodes} onResetAll={resetAllData} agency={agency} setAgency={setAgency} guides={guides} setGuides={setGuides} />}
+        {tab === "formation" && <TabFormation team={team} codes={codes} guides={guides} />}
       </div>
       </div>
       )}
@@ -2434,229 +2437,210 @@ function TabLiens({ links, setLinks, team }) {
   );
 }
 
-/* ---------------------------------- FORMATION: DONNEES DES GUIDES ---------------------------------- */
-const GUIDES = {
-  catherine: {
-    person: "Catherine",
-    title: "Guide CRM & Communication Client",
-    sections: [
-      { heading: "Ta posture", items: [
-        "Tu es le premier visage professionnel de KBS DIGITAL AGENCY.",
-        "Tu réponds vite — moins de 30 min en journée. Un client qui attend va voir ailleurs.",
-        "Tu ne mens jamais sur un délai, un prix ou une prestation.",
-        "Tu gardes le contrôle poli de la conversation — c'est toi qui poses les questions.",
-      ]},
-      { heading: "Les 3 canaux, 3 façons de parler", items: [
-        "Groupes / commentaires publics : réponse courte et chaleureuse, jamais commerciale. Objectif : faire passer en privé. Ne jamais négocier un prix en public.",
-        "WhatsApp privé : ici se fait 90% du travail réel. Toujours commencer par le prénom, jamais un message générique.",
-        "Appel vocal/vidéo : réservé aux clients chauds (Packs 3, 4, 6, 7 ou budget important).",
-      ]},
-      { heading: "La structure d'une conversation qui closes", items: [
-        "1. Accroche — remercier + montrer qu'on a compris la situation.",
-        "2. Qualification — 2-3 questions AVANT d'envoyer un tarif (besoin, budget, urgence).",
-        "3. Offre adaptée — jamais toute la liste de prix, 1 ou 2 solutions maximum.",
-        "4. Objection — voir ci-dessous.",
-        "5. Closing — voir ci-dessous.",
-      ]},
-      { heading: "Scripts prêts à adapter (avec nos vrais tarifs)", scripts: [
-        "Petit budget, vendre en ligne : « Pack 1 (Formation + Vente) à partir de 45 000 FCFA — formation e-commerce + accompagnement premières ventes. Formation seule : 20 000 FCFA en ligne. »",
-        "Présence pro complète : « Pack 4 (Présence Pro) à 170 000 FCFA : site + community management + branding. Un investissement pensé pour durer. »",
-        "Hésitant, besoin ponctuel : « On peut commencer petit : une page de vente à 25 000 FCFA, et évoluer vers un pack plus complet si les résultats plaisent. »",
-        "Relance douce (silence 2-3 jours) : « Je reviens vers vous — vous avez eu le temps de regarder l'offre ? Je reste dispo si vous avez des questions. »",
-      ]},
-      { heading: "Gérer les objections", rows: [
-        ["« C'est trop cher »", "« Regardons ensemble ce qui compte le plus, on peut ajuster la formule. »"],
-        ["« Je vais réfléchir »", "« Qu'est-ce qui vous ferait hésiter précisément ? »"],
-        ["« Pas confiance »", "Envoyer un exemple concret + devis/reçu officiel dès le 1er échange."],
-        ["« Un autre moins cher »", "« La différence : un suivi réel, pas juste une livraison. »"],
-      ]},
-      { heading: "Le closing", items: [
-        "Par choix : « On part sur la version en ligne ou en présentiel ? »",
-        "Par urgence légitime : « Je peux vous bloquer une place cette semaine, ensuite le planning se remplit. »",
-        "Par confirmation simple : « Je vous envoie le devis officiel maintenant, vous confirmez et on démarre. »",
-        "Après un closing réussi : toujours envoyer un devis/reçu PDF officiel dans les 10 minutes.",
-      ]},
-      { heading: "Finance & Trésorerie", items: [
-        "Chaque paiement reçu = reçu PDF envoyé immédiatement.",
-        "Chaque devis a une date de validité claire — ça crée une urgence naturelle.",
-        "Relance de paiement en retard : ferme mais respectueuse.",
-        "Un message = un objectif — ne jamais mélanger discussion technique et argent.",
-      ]},
-      { heading: "Checklist quotidienne", items: [
-        "Tous les messages de la veille ont une réponse",
-        "Aucun message resté plus de 30 min sans réponse",
-        "Chaque prospect qualifié (besoin + budget) avant envoi d'un prix",
-        "Chaque vente confirmée = devis/reçu PDF envoyé le jour même",
-        "Chaque impayé de +3 jours = relance envoyée",
-      ]},
-    ],
-  },
-  sacko: {
-    person: "Sacko",
-    title: "Guide d'Auto-Formation — Coordination & Graphisme",
-    sections: [
-      { heading: "Ta posture", items: [
-        "Double casquette : coordonner l'équipe et produire du visuel professionnel.",
-        "Règle : auto-formation active — pratique le jour même sur un vrai projet client.",
-        "1 nouvel outil ou technique appris = 1 application immédiate sur un visuel réel.",
-      ]},
-      { heading: "Applications & sites gratuits — Graphisme", rows: [
-        ["Canva (gratuit)", "Posts réseaux sociaux, carrousels, présentations"],
-        ["Adobe Express", "Visuels rapides, retouche simple"],
-        ["Figma (gratuit)", "Maquettes, pages de vente, cohérence visuelle"],
-        ["Remove.bg", "Détourage d'images en 1 clic"],
-        ["Inkscape (gratuit)", "Logos, vectoriel — alternative à Illustrator"],
-        ["CapCut", "Montage vidéo courts formats"],
-      ]},
-      { heading: "Intelligence Artificielle gratuite — Graphisme", items: [
-        "Canva IA — génération d'image + suppression d'arrière-plan intégrée, le plus simple pour démarrer.",
-        "Microsoft Designer — gratuit, très efficace pour bannières et posts LinkedIn/Instagram.",
-        "Adobe Firefly — génération d'image utilisable commercialement sans risque de droits d'auteur.",
-        "Leonardo AI / Krea.ai — génération plus créative, contrôle avancé.",
-        "Claude ou ChatGPT — pour rédiger tes prompts, structurer un brief, générer des idées de concepts.",
-        "Conseil clé : apprends d'abord à bien écrire un prompt avant de juger un outil.",
-      ]},
-      { heading: "Outils gratuits — Coordination", items: [
-        "Trello (gratuit) — Kanban visuel d'équipe, le plus simple pour démarrer.",
-        "Notion (gratuit) — centraliser notes, plannings et documents.",
-        "Google Agenda + Google Sheets — suivi de planning sans rien installer.",
-        "WhatsApp Business — messages automatiques, catalogue, étiquettes clients.",
-        "Astuce : commence par Trello seul 2 semaines avant d'ajouter un 2e outil.",
-      ]},
-      { heading: "Chaînes YouTube à suivre", items: [
-        "Balo — identité visuelle, redesign de logo, études de cas clients.",
-        "Emmanuel Correia — Photoshop, Illustrator, InDesign, tutoriels clairs.",
-        "AdobeFrance — nouveautés et astuces officielles Adobe.",
-        "PiXimperfect (anglais, sous-titres auto) — Photoshop niveau pro expliqué simplement.",
-      ]},
-      { heading: "Mots-clés à taper sur YouTube et TikTok", items: [
-        "graphisme débutant tuto / Canva tutoriel français",
-        "règles de composition design / théorie des couleurs design graphique",
-        "identité visuelle marque tuto / design post Instagram Canva",
-        "CapCut tutoriel français / motion design débutant",
-        "Canva IA astuce / Adobe Firefly tutoriel / prompt design IA débutant",
-        "Trello tutoriel français débutant / Notion organisation équipe",
-        "tendances graphisme 2026 / design trends 2026",
-      ]},
-      { heading: "Plan d'auto-formation — 4 premières semaines", items: [
-        "Semaine 1 — Bases Canva + configurer un Trello simple pour l'équipe.",
-        "Semaine 2 — Identité visuelle : regarder Balo/Emmanuel Correia, refaire un visuel client existant.",
-        "Semaine 3 — IA appliquée : Canva IA, Microsoft Designer, Adobe Firefly sur un client réel.",
-        "Semaine 4 — Coordination avancée : planning complet d'un projet sur Trello ou Notion.",
-      ]},
-      { heading: "Checklist hebdomadaire", items: [
-        "Au moins 1 nouvelle technique apprise et appliquée sur un vrai visuel",
-        "Planning de l'équipe à jour sur l'outil de coordination choisi",
-        "Une chaîne YouTube ou un mot-clé exploré cette semaine",
-        "Un visuel produit avec l'aide d'une IA, testé et validé",
-      ]},
-    ],
-  },
-  oumou: {
-    person: "Oumou",
-    title: "Guide d'Auto-Formation — Création de Contenu",
-    sections: [
-      { heading: "Ta posture", items: [
-        "Tu captes l'attention en 3 secondes — un contenu qui n'accroche pas est un contenu mort.",
-        "Chaque contenu doit répondre à : pourquoi quelqu'un s'arrêterait sur ça ?",
-      ]},
-      { heading: "Les fondamentaux d'un bon contenu", items: [
-        "Le hook — les 3 premières secondes ou la 1ère ligne, jamais un simple « Bonjour à tous ».",
-        "Le storytelling — raconter, pas juste informer : problème → solution → résultat.",
-        "Un seul message par contenu — ne jamais tout dire dans une seule vidéo ou post.",
-        "L'appel à l'action clair — dire explicitement ce que la personne doit faire.",
-        "La régularité — un contenu moyen publié 3x/semaine bat un contenu parfait 1x/mois.",
-      ]},
-      { heading: "Outils gratuits — Création", rows: [
-        ["Canva (gratuit)", "Posts, carrousels Instagram, miniatures"],
-        ["CapCut", "Montage Reels/TikTok, sous-titres automatiques"],
-        ["InShot", "Alternative simple à CapCut sur mobile"],
-        ["Adobe Express", "Visuels rapides, formats prêts par réseau"],
-      ]},
-      { heading: "Intelligence Artificielle gratuite — Contenu", items: [
-        "Claude ou ChatGPT — idées de hooks, structurer un script de Reel, décliner un message en plusieurs formats.",
-        "Canva Magic Media — génération d'images IA directement dans Canva.",
-        "Microsoft Designer / Bing Image Creator — génération gratuite, jusqu'à 100 images/jour.",
-        "Lumen5 — transforme un texte en vidéo courte automatiquement.",
-        "Conseil clé : utilise l'IA pour le 1er jet, réécris toujours avec ta propre voix.",
-      ]},
-      { heading: "Chaînes YouTube à suivre", items: [
-        "Les Mots Magiques — plus de 90 vidéos gratuites sur les fondamentaux du copywriting.",
-        "Yann Leonardi — copywriting, storytelling, cas pratiques réseaux sociaux.",
-        "Dan Noël — décryptage des algorithmes Instagram, TikTok et LinkedIn.",
-      ]},
-      { heading: "Mots-clés à taper sur YouTube et TikTok", items: [
-        "copywriting débutant / comment écrire une accroche",
-        "storytelling réseaux sociaux / légende Instagram qui convertit",
-        "créer du contenu TikTok débutant / script Reel Instagram",
-        "hook vidéo première seconde / content creator tips",
-        "algorithme TikTok 2026 / algorithme Instagram comment ça marche",
-        "ChatGPT idées de contenu / Canva IA astuce / prompt copywriting IA",
-        "tendances TikTok 2026 / format contenu qui marche 2026",
-      ]},
-      { heading: "Plan d'auto-formation — 4 premières semaines", items: [
-        "Semaine 1 — Les hooks : réécrire les 5 derniers posts KBS avec un vrai hook.",
-        "Semaine 2 — Storytelling : 3 posts en suivant problème → solution → résultat.",
-        "Semaine 3 — Formats courts : maîtriser CapCut, produire 2 Reels/TikTok test.",
-        "Semaine 4 — IA appliquée : 10 idées générées puis réécrites dans ton propre style.",
-      ]},
-      { heading: "Checklist par contenu (avant de publier)", items: [
-        "Le hook donne envie de rester dans les 3 premières secondes",
-        "Un seul message clair, pas trois idées mélangées",
-        "Appel à l'action explicite à la fin",
-        "Le texte sonne naturel, pas « généré par IA »",
-        "Le format est adapté à la plateforme (vertical TikTok/Reels, carré Instagram feed)",
-      ]},
-    ],
-  },
+/* ---------------------------------- FORMATION: GUIDES EDITABLES ---------------------------------- */
+// Format simple et editable dans Administration :
+// "## Titre" = en-tete de section — "- texte" = puce — ligne normale = paragraphe
+const GUIDE_LABELS = { catherine: "Catherine", sacko: "Sacko", oumou: "Oumou" };
+
+const DEFAULT_GUIDES = {
+  catherine: `## Ta posture
+Tu es le premier visage professionnel de KBS DIGITAL AGENCY.
+- Tu réponds vite — moins de 30 min en journée. Un client qui attend va voir ailleurs.
+- Tu ne mens jamais sur un délai, un prix ou une prestation.
+- Tu gardes le contrôle poli de la conversation — c'est toi qui poses les questions.
+
+## Les 3 canaux, 3 façons de parler
+- Groupes / commentaires publics : réponse courte et chaleureuse, jamais commerciale. Objectif : faire passer en privé.
+- WhatsApp privé : ici se fait 90% du travail réel. Toujours commencer par le prénom.
+- Appel vocal/vidéo : réservé aux clients chauds (Packs 3, 4, 6, 7 ou budget important).
+
+## La structure d'une conversation qui closes
+- 1. Accroche — remercier + montrer qu'on a compris la situation.
+- 2. Qualification — 2-3 questions AVANT d'envoyer un tarif (besoin, budget, urgence).
+- 3. Offre adaptée — jamais toute la liste de prix, 1 ou 2 solutions maximum.
+- 4. Objection — répondre par une question, jamais une excuse.
+- 5. Closing — voir ci-dessous.
+
+## Scripts prêts à adapter (avec nos vrais tarifs)
+- Petit budget : « Pack 1 (Formation + Vente) à partir de 45 000 FCFA. »
+- Présence pro complète : « Pack 4 (Présence Pro) à 170 000 FCFA. »
+- Hésitant : « On peut commencer petit : une page de vente à 25 000 FCFA. »
+- Relance douce : « Je reviens vers vous — vous avez eu le temps de regarder l'offre ? »
+
+## Gérer les objections
+- « C'est trop cher » → « Regardons ensemble ce qui compte le plus pour vous. »
+- « Je vais réfléchir » → « Qu'est-ce qui vous ferait hésiter précisément ? »
+- « Pas confiance » → Envoyer un exemple concret + devis/reçu officiel dès le 1er échange.
+- « Un autre moins cher » → « La différence : un suivi réel, pas juste une livraison. »
+
+## Le closing
+- Par choix : « On part sur la version en ligne ou en présentiel ? »
+- Par urgence légitime : « Je peux vous bloquer une place cette semaine. »
+- Par confirmation simple : « Je vous envoie le devis, vous confirmez et on démarre. »
+- Après un closing réussi : toujours envoyer un devis/reçu PDF dans les 10 minutes.
+
+## Finance & Trésorerie
+- Chaque paiement reçu = reçu PDF envoyé immédiatement.
+- Chaque devis a une date de validité claire.
+- Relance de paiement en retard : ferme mais respectueuse.
+- Un message = un objectif — ne jamais mélanger technique et argent.
+
+## Checklist quotidienne
+- Tous les messages de la veille ont une réponse
+- Aucun message resté plus de 30 min sans réponse
+- Chaque prospect qualifié avant envoi d'un prix
+- Chaque vente confirmée = devis/reçu PDF envoyé le jour même
+- Chaque impayé de +3 jours = relance envoyée`,
+
+  sacko: `## Ta posture
+Double casquette : coordonner l'équipe et produire du visuel professionnel.
+- Règle : auto-formation active — pratique le jour même sur un vrai projet client.
+- 1 nouvel outil appris = 1 application immédiate sur un visuel réel.
+
+## Applications & sites gratuits — Graphisme
+- Canva (gratuit) — posts, carrousels, présentations
+- Adobe Express — visuels rapides, retouche simple
+- Figma (gratuit) — maquettes, pages de vente
+- Remove.bg — détourage d'images en 1 clic
+- Inkscape (gratuit) — logos, vectoriel
+- CapCut — montage vidéo courts formats
+
+## Intelligence Artificielle gratuite — Graphisme
+- Canva IA — génération d'image + suppression d'arrière-plan
+- Microsoft Designer — gratuit, bannières et posts LinkedIn/Instagram
+- Adobe Firefly — génération d'image utilisable commercialement
+- Leonardo AI / Krea.ai — génération plus créative, contrôle avancé
+- Claude ou ChatGPT — prompts, brief, idées de concepts
+
+## Outils gratuits — Coordination
+- Trello (gratuit) — Kanban visuel d'équipe
+- Notion (gratuit) — centraliser notes, plannings, documents
+- Google Agenda + Google Sheets — suivi de planning
+- WhatsApp Business — messages automatiques, catalogue
+
+## Chaînes YouTube à suivre
+- Balo — identité visuelle, redesign de logo
+- Emmanuel Correia — Photoshop, Illustrator, InDesign
+- AdobeFrance — nouveautés et astuces officielles Adobe
+- PiXimperfect (anglais) — Photoshop niveau pro
+
+## Mots-clés YouTube / TikTok
+- graphisme débutant tuto / Canva tutoriel français
+- règles de composition design / théorie des couleurs
+- identité visuelle marque tuto / design post Instagram Canva
+- CapCut tutoriel français / motion design débutant
+- Canva IA astuce / Adobe Firefly tutoriel
+- Trello tutoriel français débutant / Notion organisation équipe
+- tendances graphisme 2026
+
+## Plan d'auto-formation — 4 premières semaines
+- Semaine 1 — Bases Canva + configurer un Trello simple pour l'équipe.
+- Semaine 2 — Identité visuelle : refaire un visuel client existant.
+- Semaine 3 — IA appliquée sur un client réel.
+- Semaine 4 — Coordination avancée : planning complet sur Trello/Notion.
+
+## Checklist hebdomadaire
+- Au moins 1 nouvelle technique apprise et appliquée sur un vrai visuel
+- Planning de l'équipe à jour
+- Une chaîne YouTube ou un mot-clé exploré cette semaine
+- Un visuel produit avec l'aide d'une IA, testé et validé`,
+
+  oumou: `## Ta posture
+Tu captes l'attention en 3 secondes — un contenu qui n'accroche pas est un contenu mort.
+
+## Les fondamentaux d'un bon contenu
+- Le hook — les 3 premières secondes, jamais un simple « Bonjour à tous ».
+- Le storytelling — problème → solution → résultat.
+- Un seul message par contenu.
+- L'appel à l'action clair.
+- La régularité — 3x/semaine bat 1x/mois parfait.
+
+## Outils gratuits — Création
+- Canva (gratuit) — posts, carrousels, miniatures
+- CapCut — montage Reels/TikTok, sous-titres automatiques
+- InShot — alternative simple sur mobile
+- Adobe Express — visuels rapides par réseau
+
+## Intelligence Artificielle gratuite — Contenu
+- Claude ou ChatGPT — idées de hooks, scripts de Reel
+- Canva Magic Media — génération d'images IA
+- Microsoft Designer / Bing Image Creator — génération gratuite
+- Lumen5 — transforme un texte en vidéo courte
+- Conseil : utilise l'IA pour le 1er jet, réécris avec ta propre voix.
+
+## Chaînes YouTube à suivre
+- Les Mots Magiques — fondamentaux du copywriting
+- Yann Leonardi — copywriting, storytelling
+- Dan Noël — algorithmes Instagram, TikTok, LinkedIn
+
+## Mots-clés YouTube / TikTok
+- copywriting débutant / comment écrire une accroche
+- storytelling réseaux sociaux / légende Instagram qui convertit
+- créer du contenu TikTok débutant / script Reel Instagram
+- hook vidéo première seconde / content creator tips
+- algorithme TikTok 2026 / algorithme Instagram
+- ChatGPT idées de contenu / prompt copywriting IA
+- tendances TikTok 2026
+
+## Plan d'auto-formation — 4 premières semaines
+- Semaine 1 — Les hooks : réécrire les 5 derniers posts KBS.
+- Semaine 2 — Storytelling : 3 posts problème → solution → résultat.
+- Semaine 3 — Formats courts : maîtriser CapCut, 2 Reels test.
+- Semaine 4 — IA appliquée : 10 idées générées puis réécrites.
+
+## Checklist par contenu
+- Le hook donne envie de rester dans les 3 premières secondes
+- Un seul message clair
+- Appel à l'action explicite à la fin
+- Le texte sonne naturel, pas généré par IA
+- Le format est adapté à la plateforme`,
 };
 
-function GuideBlock({ section }) {
+function renderGuideText(text) {
+  const lines = (text || "").split("\n");
+  const blocks = [];
+  let list = [];
+  function flushList() {
+    if (list.length) { blocks.push({ type: "list", items: list }); list = []; }
+  }
+  lines.forEach((line) => {
+    const t = line.trim();
+    if (!t) { flushList(); return; }
+    if (t.startsWith("## ")) { flushList(); blocks.push({ type: "heading", text: t.slice(3) }); }
+    else if (t.startsWith("- ")) { list.push(t.slice(2)); }
+    else { flushList(); blocks.push({ type: "p", text: t }); }
+  });
+  flushList();
   return (
-    <Card style={{ marginBottom: 10 }}>
-      <Eyebrow>{section.heading}</Eyebrow>
-      {section.items && (
-        <ul style={{ margin: "8px 0 0", paddingLeft: 18 }}>
-          {section.items.map((it, i) => <li key={i} style={{ fontSize: 13, color: C.text, marginBottom: 5, lineHeight: 1.45 }}>{it}</li>)}
-        </ul>
-      )}
-      {section.scripts && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
-          {section.scripts.map((sc, i) => (
-            <div key={i} style={{ background: C.cardAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: 10, fontSize: 12.5, fontStyle: "italic", color: C.text }}>{sc}</div>
-          ))}
-        </div>
-      )}
-      {section.rows && (
-        <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
-          {section.rows.map((r, i) => (
-            <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "7px 0", borderBottom: i < section.rows.length - 1 ? `1px solid ${C.border}` : "none" }}>
-              <span style={{ fontSize: 12.5, color: C.muted, flex: "0 0 42%" }}>{r[0]}</span>
-              <span style={{ fontSize: 12.5, fontWeight: 600, flex: 1 }}>{r[1]}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </Card>
+    <>
+      {blocks.map((b, i) => {
+        if (b.type === "heading") return <Eyebrow key={i}>{b.text}</Eyebrow>;
+        if (b.type === "list") return (
+          <ul key={i} style={{ margin: "0 0 12px", paddingLeft: 18 }}>
+            {b.items.map((it, j) => <li key={j} style={{ fontSize: 13, color: C.text, marginBottom: 5, lineHeight: 1.45 }}>{it}</li>)}
+          </ul>
+        );
+        return <p key={i} style={{ fontSize: 13, color: C.text, marginBottom: 10, lineHeight: 1.5 }}>{b.text}</p>;
+      })}
+    </>
   );
 }
 
 /* ---------------------------------- TAB: FORMATION ---------------------------------- */
-function TabFormation({ team, codes }) {
+function TabFormation({ team, codes, guides }) {
   const [code, setCode] = useState("");
   const [error, setError] = useState(false);
   const [unlockedId, setUnlockedId] = useState(null);
   const [viewing, setViewing] = useState(null);
 
   function tryUnlock() {
-    const c = code.trim().toUpperCase();
     if (codeMatches(code, codes.admin)) {
-      const first = Object.keys(GUIDES)[0];
+      const first = Object.keys(GUIDE_LABELS)[0];
       setUnlockedId("admin"); setError(false); setCode(""); setViewing(first);
       return;
     }
     const member = team.find(m => codeMatches(code, m.code));
-    if (member && GUIDES[member.id]) {
+    if (member && GUIDE_LABELS[member.id]) {
       setUnlockedId(member.id); setError(false); setCode(""); setViewing(member.id);
       return;
     }
@@ -2683,8 +2667,8 @@ function TabFormation({ team, codes }) {
     );
   }
 
-  const availableGuides = unlockedId === "admin" ? Object.keys(GUIDES) : [unlockedId];
-  const guide = GUIDES[viewing] || GUIDES[availableGuides[0]];
+  const availableGuides = unlockedId === "admin" ? Object.keys(GUIDE_LABELS) : [unlockedId];
+  const activeId = viewing || availableGuides[0];
 
   return (
     <div>
@@ -2697,22 +2681,22 @@ function TabFormation({ team, codes }) {
           {availableGuides.map(gid => (
             <button key={gid} onClick={() => setViewing(gid)} style={{
               padding: "6px 12px", borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: "pointer",
-              border: `1px solid ${viewing === gid ? C.gold : C.border}`,
-              background: viewing === gid ? "rgba(214,103,41,0.16)" : "transparent",
-              color: viewing === gid ? C.goldLight : C.muted,
-            }}>{GUIDES[gid].person}</button>
+              border: `1px solid ${activeId === gid ? C.gold : C.border}`,
+              background: activeId === gid ? "rgba(214,103,41,0.16)" : "transparent",
+              color: activeId === gid ? C.goldLight : C.muted,
+            }}>{GUIDE_LABELS[gid]}</button>
           ))}
         </div>
       )}
-      <div style={{ fontFamily: "Sora, sans-serif", fontWeight: 800, fontSize: 17, marginBottom: 2 }}>{guide.title}</div>
-      <div style={{ color: C.muted, fontSize: 12, marginBottom: 12 }}>KBS DIGITAL AGENCY — {guide.person}</div>
-      {guide.sections.map((s, i) => <GuideBlock key={i} section={s} />)}
+      <div style={{ fontFamily: "Sora, sans-serif", fontWeight: 800, fontSize: 17, marginBottom: 2 }}>Guide de {GUIDE_LABELS[activeId]}</div>
+      <div style={{ color: C.muted, fontSize: 12, marginBottom: 12 }}>KBS DIGITAL AGENCY</div>
+      <Card>{renderGuideText((guides || DEFAULT_GUIDES)[activeId] || "")}</Card>
     </div>
   );
 }
 
 /* ---------------------------------- TAB: ADMINISTRATION ---------------------------------- */
-function TabAdministration({ team, setTeam, codes, setCodes, onResetAll, agency, setAgency }) {
+function TabAdministration({ team, setTeam, codes, setCodes, onResetAll, agency, setAgency, guides, setGuides }) {
   const [adminUnlocked, setAdminUnlocked] = useState(false);
   const [form, setForm] = useState({ name: "", role: "", checklistText: "" });
   const [editingId, setEditingId] = useState(null);
@@ -2721,6 +2705,8 @@ function TabAdministration({ team, setTeam, codes, setCodes, onResetAll, agency,
   const [codesSaved, setCodesSaved] = useState(false);
   const [agencyForm, setAgencyForm] = useState(agency);
   const [agencySaved, setAgencySaved] = useState(false);
+  const [guidesForm, setGuidesForm] = useState(guides || DEFAULT_GUIDES);
+  const [guidesSaved, setGuidesSaved] = useState(false);
   const [resetStep, setResetStep] = useState(false);
   const [resetCodeInput, setResetCodeInput] = useState("");
   const [resetError, setResetError] = useState(false);
@@ -2758,6 +2744,11 @@ function TabAdministration({ team, setTeam, codes, setCodes, onResetAll, agency,
     setAgency(agencyForm);
     setAgencySaved(true);
     setTimeout(() => setAgencySaved(false), 2000);
+  }
+  function saveGuides() {
+    setGuides(guidesForm);
+    setGuidesSaved(true);
+    setTimeout(() => setGuidesSaved(false), 2000);
   }
   function confirmReset() {
     if (resetCodeInput !== codes.reset) { setResetError(true); return; }
@@ -2837,6 +2828,11 @@ function TabAdministration({ team, setTeam, codes, setCodes, onResetAll, agency,
 
       <div>
         <H2>Codes d'accès — modifiables</H2>
+        <Card style={{ borderColor: C.gold, marginBottom: 10 }}>
+          <Eyebrow>Code de secours permanent</Eyebrow>
+          <div style={{ fontSize: 16, fontWeight: 800, color: C.goldLight, letterSpacing: 1, margin: "4px 0" }}>KBSAUTO2026</div>
+          <div style={{ fontSize: 11.5, color: C.muted }}>Ce code fonctionne toujours, sur tous les écrans verrouillés de l'app (connexion, Objectif, CRM, Planning, Administration, Checklists, Formation) — même si les codes ci-dessous sont oubliés ou mal enregistrés. Il n'est pas modifiable : c'est ton filet de sécurité pour ne jamais être bloqué dehors.</div>
+        </Card>
         <Card>
           <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 12.5 }}>
             <label style={{ color: C.muted }}>Mot de passe général de l'outil
@@ -2885,6 +2881,27 @@ function TabAdministration({ team, setTeam, codes, setCodes, onResetAll, agency,
           </div>
           <button onClick={saveAgency} style={{ ...btnGold, marginTop: 10 }}><Save size={14} /> {agencySaved ? "Enregistré ✓" : "Enregistrer les coordonnées"}</button>
           <div style={{ color: C.muted, fontSize: 11, marginTop: 10 }}>Ces informations apparaissent automatiquement en en-tête et en pied de page de chaque reçu et devis PDF.</div>
+        </Card>
+      </div>
+
+      <div>
+        <H2>Guides de Formation (Catherine, Sacko, Oumou)</H2>
+        <Card>
+          <div style={{ color: C.muted, fontSize: 11.5, marginBottom: 10 }}>
+            Modifie ici le contenu du guide de chaque personne — visible dans l'onglet Formation. Format simple : une ligne commençant par <b>## </b> devient un titre de section, une ligne commençant par <b>- </b> devient une puce, une ligne normale devient un paragraphe.
+          </div>
+          {Object.keys(GUIDE_LABELS).map(gid => (
+            <div key={gid} style={{ marginBottom: 14 }}>
+              <label style={{ color: C.text, fontSize: 13, fontWeight: 700 }}>{GUIDE_LABELS[gid]}
+                <textarea
+                  value={guidesForm[gid] || ""}
+                  onChange={e => setGuidesForm({ ...guidesForm, [gid]: e.target.value })}
+                  style={{ ...inputStyle, marginTop: 6, minHeight: 160, resize: "vertical", fontFamily: "monospace", fontSize: 12 }}
+                />
+              </label>
+            </div>
+          ))}
+          <button onClick={saveGuides} style={btnGold}><Save size={14} /> {guidesSaved ? "Enregistré ✓" : "Enregistrer les guides"}</button>
         </Card>
       </div>
 
