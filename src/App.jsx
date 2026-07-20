@@ -103,7 +103,7 @@ const DEFAULT_TEAM = [
     checklist: ["Écrire un script vidéo", "Tourner une vidéo", "Analyser une tendance TikTok", "Répondre aux commentaires"] },
 ];
 
-const PACKS = [
+const DEFAULT_PACKS = [
   { name: "Pack 1 : Formation + Vente", online: 45000, presentiel: 80000 },
   { name: "Pack 2 : Lancement Produit", online: 50000, presentiel: 85000 },
   { name: "Pack 3 : Visibilité (Mensuel)", online: 140000, presentiel: 160000 },
@@ -113,7 +113,7 @@ const PACKS = [
   { name: "Pack 7 : Tech / Projet Avancé", online: 350000, presentiel: null, note: "Sur devis" },
 ];
 
-const FORMATIONS = [
+const DEFAULT_FORMATIONS = [
   { name: "Formation Alibaba", online: 10000, presentiel: 20000 },
   { name: "Formation E-commerce", online: 20000, presentiel: 35000 },
   { name: "Intelligence Artificielle (IA)", online: 20000, presentiel: 35000 },
@@ -122,12 +122,15 @@ const FORMATIONS = [
   { name: "Formation au Closing", online: 15000, presentiel: 25000 },
 ];
 
-const PRESTATIONS = [
+const DEFAULT_PRESTATIONS = [
   { name: "Création de page de vente", price: "25 000 FCFA" },
   { name: "Création de site web dynamique", price: "100 000 FCFA" },
   { name: "Community Management", price: "100 000 FCFA / mois" },
   { name: "Création de SaaS / Application", price: "À partir de 300 000 FCFA" },
 ];
+
+const DEFAULT_PRICING = { packs: DEFAULT_PACKS, formations: DEFAULT_FORMATIONS, prestations: DEFAULT_PRESTATIONS };
+
 
 const AI_TOOLS = [
   { cat: "Rédaction, Stratégie & Recherche IA", items: [
@@ -472,24 +475,28 @@ const DEPENSES_CATEGORIES = ["Publicité (Meta/TikTok)", "Abonnements outils IA"
 
 const SUIVI_STATUTS = ["Nouveau client", "Formation en cours", "Formation terminée", "Support après-vente"];
 
-const SERVICES_CATALOGUE = [
-  { groupe: "Packs stratégiques", options: PACKS.map(p => p.name) },
-  { groupe: "Formations & Coaching", options: FORMATIONS.map(f => f.name) },
-  { groupe: "Prestations techniques & créatives", options: PRESTATIONS.map(p => p.name) },
-];
+function buildServicesCatalogue(pricing) {
+  return [
+    { groupe: "Packs stratégiques", options: pricing.packs.map(p => p.name) },
+    { groupe: "Formations & Coaching", options: pricing.formations.map(f => f.name) },
+    { groupe: "Prestations techniques & créatives", options: pricing.prestations.map(p => p.name) },
+  ];
+}
 
 const DETTE_STATUTS = ["En attente", "Payée"];
 
 const PROSPECTION_STATUTS = ["À répondu", "Intéressé", "Contacté", "Objection prix", "Pas intéressé", "Archivé"];
 const INTERET_NIVEAUX = ["Chaud", "Tiède", "Froid"];
-const ALL_SERVICES_FLAT = [...PACKS.map(p => p.name), ...FORMATIONS.map(p => p.name), ...PRESTATIONS.map(p => p.name)];
+function buildAllServicesFlat(pricing) {
+  return [...pricing.packs.map(p => p.name), ...pricing.formations.map(p => p.name), ...pricing.prestations.map(p => p.name)];
+}
 
-function findServiceInfo(name) {
-  const pack = PACKS.find(p => p.name === name);
+function findServiceInfo(name, pricing) {
+  const pack = pricing.packs.find(p => p.name === name);
   if (pack) return { price: fcfa(pack.online) };
-  const f = FORMATIONS.find(p => p.name === name);
+  const f = pricing.formations.find(p => p.name === name);
   if (f) return { price: fcfa(f.online) };
-  const pr = PRESTATIONS.find(p => p.name === name);
+  const pr = pricing.prestations.find(p => p.name === name);
   if (pr) return { price: pr.price };
   return { price: "[Prix]" };
 }
@@ -907,6 +914,7 @@ export default function App() {
   const [formationVideos, setFormationVideos] = useState({});
   const [formationLiens, setFormationLiens] = useState({});
   const [ressourcesUnlocked, setRessourcesUnlocked] = useState(false);
+  const [pricing, setPricing] = useState(DEFAULT_PRICING);
 
   useEffect(() => {
     (async () => {
@@ -926,6 +934,7 @@ export default function App() {
       setGuides(await loadShared("kbs:guides", DEFAULT_GUIDES));
       setFormationVideos(await loadShared("kbs:formationVideos", {}));
       setFormationLiens(await loadShared("kbs:formationLiens", {}));
+      setPricing({ ...DEFAULT_PRICING, ...(await loadShared("kbs:pricing", DEFAULT_PRICING)) });
       setLoaded(true);
     })();
   }, []);
@@ -946,8 +955,11 @@ export default function App() {
   useEffect(() => { if (loaded) saveShared("kbs:guides", guides); }, [guides, loaded]);
   useEffect(() => { if (loaded) saveShared("kbs:formationVideos", formationVideos); }, [formationVideos, loaded]);
   useEffect(() => { if (loaded) saveShared("kbs:formationLiens", formationLiens); }, [formationLiens, loaded]);
+  useEffect(() => { if (loaded) saveShared("kbs:pricing", pricing); }, [pricing, loaded]);
 
   const totalCA = useMemo(() => prospects.reduce((s, p) => s + (Number(p.montant) || 0), 0), [prospects]);
+  const servicesCatalogue = useMemo(() => buildServicesCatalogue(pricing), [pricing]);
+  const allServicesFlat = useMemo(() => buildAllServicesFlat(pricing), [pricing]);
   const totalCommission = totalCA * 0.25;
   const totalDepenses = useMemo(() => expenses.reduce((s, e) => s + (Number(e.montant) || 0), 0), [expenses]);
   const beneficeNet = totalCA - totalCommission - totalDepenses;
@@ -1093,14 +1105,14 @@ export default function App() {
         {tab === "objectif" && <TabObjectif goal={goal} setGoal={setGoal} totalCA={totalCA} totalCommission={totalCommission} pct={pct} prospects={prospects} team={team} codes={codes} />}
         {tab === "dispos" && <TabDispos dispos={dispos} setDispos={setDispos} team={team} />}
         {tab === "kanban" && <TabKanban kanban={kanban} setKanban={setKanban} checks={checks} setChecks={setChecks} team={team} codes={codes} />}
-        {tab === "crm" && <TabCRM prospects={prospects} setProspects={setProspects} totalCA={totalCA} totalCommission={totalCommission} team={team} codes={codes} agency={agency} />}
+        {tab === "crm" && <TabCRM prospects={prospects} setProspects={setProspects} totalCA={totalCA} totalCommission={totalCommission} team={team} codes={codes} agency={agency} pricing={pricing} servicesCatalogue={servicesCatalogue} />}
         {tab === "devis" && <TabDevis devis={devis} setDevis={setDevis} prospects={prospects} team={team} agency={agency} />}
         {tab === "tresorerie" && <TabTresorerie prospects={prospects} setProspects={setProspects} expenses={expenses} setExpenses={setExpenses} totalCA={totalCA} totalCommission={totalCommission} totalDepenses={totalDepenses} beneficeNet={beneficeNet} team={team} codes={codes} />}
         {tab === "dettes" && <TabDettes dettes={dettes} setDettes={setDettes} prospects={prospects} />}
-        {tab === "tarifs" && <TabTarifs />}
+        {tab === "tarifs" && <TabTarifs pricing={pricing} />}
         {tab === "cible" && <TabCible />}
         {tab === "copywriting" && <TabCopywriting />}
-        {tab === "prospection" && <TabProspection prospection={prospection} setProspection={setProspection} prospects={prospects} setProspects={setProspects} team={team} />}
+        {tab === "prospection" && <TabProspection prospection={prospection} setProspection={setProspection} prospects={prospects} setProspects={setProspects} team={team} pricing={pricing} allServicesFlat={allServicesFlat} />}
         {tab === "terrain" && <TabProspectionTerrain agency={agency} />}
         {category === "ressources" && !ressourcesUnlocked ? (
           <Card style={{ textAlign: "center" }}>
@@ -1115,7 +1127,7 @@ export default function App() {
             {tab === "formation" && <TabFormation team={team} codes={codes} guides={guides} formationVideos={formationVideos} formationLiens={formationLiens} />}
           </>
         )}
-        {tab === "administration" && <TabAdministration team={team} setTeam={setTeam} codes={codes} setCodes={setCodes} onResetAll={resetAllData} agency={agency} setAgency={setAgency} guides={guides} setGuides={setGuides} formationVideos={formationVideos} setFormationVideos={setFormationVideos} formationLiens={formationLiens} setFormationLiens={setFormationLiens} />}
+        {tab === "administration" && <TabAdministration team={team} setTeam={setTeam} codes={codes} setCodes={setCodes} onResetAll={resetAllData} agency={agency} setAgency={setAgency} guides={guides} setGuides={setGuides} formationVideos={formationVideos} setFormationVideos={setFormationVideos} formationLiens={formationLiens} setFormationLiens={setFormationLiens} pricing={pricing} setPricing={setPricing} />}
       </div>
       </div>
       )}
@@ -1219,11 +1231,11 @@ function TabObjectif({ goal, setGoal, totalCA, totalCommission, pct, prospects, 
 }
 
 /* ---------------------------------- TAB: CRM ---------------------------------- */
-function TabCRM({ prospects, setProspects, totalCA, totalCommission, team, codes, agency }) {
+function TabCRM({ prospects, setProspects, totalCA, totalCommission, team, codes, agency, pricing, servicesCatalogue }) {
   const [form, setForm] = useState({
     nom: "", prenom: "", whatsapp: "", email: "", adresse: "", quartier: "",
     dateInscription: new Date().toISOString().slice(0, 10),
-    pack: PACKS[0].name, statut: "À contacter", montant: "", owner: team[0]?.id || ""
+    pack: pricing.packs[0]?.name || "", statut: "À contacter", montant: "", owner: team[0]?.id || ""
   });
   const [catherineUnlocked, setCatherineUnlocked] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
@@ -1233,7 +1245,7 @@ function TabCRM({ prospects, setProspects, totalCA, totalCommission, team, codes
     if (!form.nom.trim()) return;
     setProspects([...prospects, { ...form, id: Date.now(), historique: [] }]);
     notifyTeam("Nouveau client 🎉", `${form.prenom || ""} ${form.nom}`.trim() + " vient d'être ajouté au CRM.", "crm");
-    setForm({ nom: "", prenom: "", whatsapp: "", email: "", adresse: "", quartier: "", dateInscription: new Date().toISOString().slice(0, 10), pack: PACKS[0].name, statut: "À contacter", montant: "", owner: team[0]?.id || "" });
+    setForm({ nom: "", prenom: "", whatsapp: "", email: "", adresse: "", quartier: "", dateInscription: new Date().toISOString().slice(0, 10), pack: pricing.packs[0]?.name || "", statut: "À contacter", montant: "", owner: team[0]?.id || "" });
   }
   function updateStatut(id, statut) {
     setProspects(prospects.map(p => p.id === id ? { ...p, statut } : p));
@@ -1273,7 +1285,7 @@ function TabCRM({ prospects, setProspects, totalCA, totalCommission, team, codes
               <input type="date" value={form.dateInscription} onChange={e => setForm({ ...form, dateInscription: e.target.value })} style={{ ...inputStyle, flex: 1 }} />
             </div>
             <select value={form.pack} onChange={e => setForm({ ...form, pack: e.target.value })} style={inputStyle}>
-              {SERVICES_CATALOGUE.map(g => (
+              {servicesCatalogue.map(g => (
                 <optgroup key={g.groupe} label={g.groupe}>
                   {g.options.map(o => <option key={o} value={o}>{o}</option>)}
                 </optgroup>
@@ -2144,12 +2156,12 @@ function TabCopywriting() {
 }
 
 /* ---------------------------------- TAB: PROSPECTION RÉSEAUX ---------------------------------- */
-function TabProspection({ prospection, setProspection, prospects, setProspects, team }) {
-  const [service, setService] = useState(ALL_SERVICES_FLAT[0]);
+function TabProspection({ prospection, setProspection, prospects, setProspects, team, pricing, allServicesFlat }) {
+  const [service, setService] = useState(allServicesFlat[0]);
   const [copiedStage, setCopiedStage] = useState(null);
   const [form, setForm] = useState({ nom: "", whatsapp: "", source: "", commentaire: "", interet: "Chaud", statut: "À répondu", scriptUtilise: DM_SCRIPTS[0].stage, note: "" });
 
-  const priceInfo = findServiceInfo(service);
+  const priceInfo = findServiceInfo(service, pricing);
 
   function renderScript(text) {
     return text.replaceAll("[Service]", service).replaceAll("[Prix]", priceInfo.price);
@@ -2172,7 +2184,7 @@ function TabProspection({ prospection, setProspection, prospects, setProspects, 
   function convertToClient(p) {
     setProspects([...prospects, {
       id: Date.now(), nom: p.nom, prenom: "", whatsapp: p.whatsapp, email: "", adresse: "", quartier: "",
-      dateInscription: new Date().toISOString().slice(0, 10), pack: PACKS[0].name, statut: "En discussion",
+      dateInscription: new Date().toISOString().slice(0, 10), pack: pricing.packs[0]?.name || "", statut: "En discussion",
       montant: "", owner: team[0]?.id || "", historique: [{ id: Date.now(), date: new Date().toISOString().slice(0, 10), note: `Converti depuis la prospection (source : ${p.source || "réseaux sociaux"})` }],
     }]);
     removeEntry(p.id);
@@ -2189,7 +2201,7 @@ function TabProspection({ prospection, setProspection, prospects, setProspects, 
       <Card>
         <Eyebrow>Service à mettre en avant</Eyebrow>
         <select value={service} onChange={e => setService(e.target.value)} style={{ ...inputStyle, marginTop: 8 }}>
-          {ALL_SERVICES_FLAT.map(s => <option key={s} value={s}>{s}</option>)}
+          {allServicesFlat.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
       </Card>
 
@@ -2361,17 +2373,17 @@ function TabAcademie() {
 }
 
 /* ---------------------------------- TAB: TARIFS ---------------------------------- */
-function TabTarifs() {
+function TabTarifs({ pricing }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div>
         <H2>Formations & Coaching</H2>
-        <Card><PriceTable rows={FORMATIONS} /></Card>
+        <Card><PriceTable rows={pricing.formations} /></Card>
       </div>
       <div>
         <H2>Prestations techniques & créatives</H2>
         <Card>
-          {PRESTATIONS.map(p => (
+          {pricing.prestations.map(p => (
             <div key={p.name} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: `1px solid ${C.border}`, fontSize: 13 }}>
               <span>{p.name}</span><span style={{ color: C.goldLight, fontWeight: 700 }}>{p.price}</span>
             </div>
@@ -2380,7 +2392,7 @@ function TabTarifs() {
       </div>
       <div>
         <H2>Packs stratégiques</H2>
-        <Card><PriceTable rows={PACKS} /></Card>
+        <Card><PriceTable rows={pricing.packs} /></Card>
       </div>
     </div>
   );
@@ -2399,6 +2411,70 @@ function PriceTable({ rows }) {
         </div>
       ))}
     </div>
+  );
+}
+
+/* Éditeur générique pour les 3 listes de tarifs (Packs, Formations, Prestations) dans Administration */
+function PricingListEditor({ title, rows, onChange, priceMode }) {
+  const isText = priceMode === "text";
+  const [newRow, setNewRow] = useState(isText ? { name: "", price: "" } : { name: "", online: "", presentiel: "", note: "" });
+
+  function updateRow(idx, patch) {
+    onChange(rows.map((r, i) => i === idx ? { ...r, ...patch } : r));
+  }
+  function removeRow(idx) {
+    onChange(rows.filter((_, i) => i !== idx));
+  }
+  function addRow() {
+    if (!newRow.name.trim()) return;
+    if (isText) {
+      onChange([...rows, { name: newRow.name, price: newRow.price }]);
+      setNewRow({ name: "", price: "" });
+    } else {
+      onChange([...rows, {
+        name: newRow.name,
+        online: Number(newRow.online) || 0,
+        presentiel: newRow.presentiel === "" ? null : Number(newRow.presentiel),
+        note: newRow.note || undefined,
+      }]);
+      setNewRow({ name: "", online: "", presentiel: "", note: "" });
+    }
+  }
+
+  return (
+    <Card style={{ marginBottom: 14 }}>
+      <Eyebrow>{title}</Eyebrow>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+        {rows.map((r, idx) => (
+          <div key={idx} style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", background: C.cardAlt, borderRadius: 8, padding: 8 }}>
+            <input value={r.name} onChange={e => updateRow(idx, { name: e.target.value })} style={{ ...inputStyle, flex: "1 1 160px" }} placeholder="Nom" />
+            {isText ? (
+              <input value={r.price} onChange={e => updateRow(idx, { price: e.target.value })} style={{ ...inputStyle, flex: "1 1 140px" }} placeholder="Prix (texte libre)" />
+            ) : (
+              <>
+                <input type="number" value={r.online ?? ""} onChange={e => updateRow(idx, { online: Number(e.target.value) || 0 })} style={{ ...inputStyle, width: 100 }} placeholder="En ligne" />
+                <input type="number" value={r.presentiel ?? ""} onChange={e => updateRow(idx, { presentiel: e.target.value === "" ? null : Number(e.target.value) })} style={{ ...inputStyle, width: 100 }} placeholder="Présentiel" />
+                <input value={r.note || ""} onChange={e => updateRow(idx, { note: e.target.value })} style={{ ...inputStyle, flex: "1 1 100px" }} placeholder="Note (ex: Sur devis)" />
+              </>
+            )}
+            <button onClick={() => removeRow(idx)} style={{ background: "none", border: "none", color: C.rustLight, cursor: "pointer" }}><Trash2 size={16} /></button>
+          </div>
+        ))}
+        {rows.length === 0 && <div style={{ color: C.muted, fontSize: 12, textAlign: "center", padding: 10 }}>Aucune offre pour l'instant.</div>}
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10, borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
+        <input value={newRow.name} onChange={e => setNewRow({ ...newRow, name: e.target.value })} style={{ ...inputStyle, flex: "1 1 160px" }} placeholder="Nouvelle offre" />
+        {isText ? (
+          <input value={newRow.price} onChange={e => setNewRow({ ...newRow, price: e.target.value })} style={{ ...inputStyle, flex: "1 1 140px" }} placeholder="Prix" />
+        ) : (
+          <>
+            <input type="number" value={newRow.online} onChange={e => setNewRow({ ...newRow, online: e.target.value })} style={{ ...inputStyle, width: 100 }} placeholder="En ligne" />
+            <input type="number" value={newRow.presentiel} onChange={e => setNewRow({ ...newRow, presentiel: e.target.value })} style={{ ...inputStyle, width: 100 }} placeholder="Présentiel" />
+          </>
+        )}
+        <button onClick={addRow} style={{ ...iconBtn, padding: "0 12px" }}><Plus size={14} /></button>
+      </div>
+    </Card>
   );
 }
 
@@ -2757,7 +2833,7 @@ function TabFormation({ team, codes, guides, formationVideos, formationLiens }) 
 }
 
 /* ---------------------------------- TAB: ADMINISTRATION ---------------------------------- */
-function TabAdministration({ team, setTeam, codes, setCodes, onResetAll, agency, setAgency, guides, setGuides, formationVideos, setFormationVideos, formationLiens, setFormationLiens }) {
+function TabAdministration({ team, setTeam, codes, setCodes, onResetAll, agency, setAgency, guides, setGuides, formationVideos, setFormationVideos, formationLiens, setFormationLiens, pricing, setPricing }) {
   const [adminUnlocked, setAdminUnlocked] = useState(false);
   const [form, setForm] = useState({ name: "", role: "", checklistText: "" });
   const [editingId, setEditingId] = useState(null);
@@ -2967,6 +3043,16 @@ function TabAdministration({ team, setTeam, codes, setCodes, onResetAll, agency,
           <button onClick={saveAgency} style={{ ...btnGold, marginTop: 10 }}><Save size={14} /> {agencySaved ? "Enregistré ✓" : "Enregistrer les coordonnées"}</button>
           <div style={{ color: C.muted, fontSize: 11, marginTop: 10 }}>Ces informations apparaissent automatiquement en en-tête et en pied de page de chaque reçu et devis PDF.</div>
         </Card>
+      </div>
+
+      <div>
+        <H2>Tarifs</H2>
+        <div style={{ color: C.muted, fontSize: 11.5, marginBottom: 10 }}>
+          Ces prix s'appliquent partout dans l'appli : Tarifs, CRM (choix du pack) et Prospection Réseaux (scripts avec prix automatique). Chaque changement est enregistré immédiatement.
+        </div>
+        <PricingListEditor title="Packs stratégiques (En ligne / Présentiel)" rows={pricing.packs} onChange={(packs) => setPricing({ ...pricing, packs })} />
+        <PricingListEditor title="Formations & Coaching (En ligne / Présentiel)" rows={pricing.formations} onChange={(formations) => setPricing({ ...pricing, formations })} />
+        <PricingListEditor title="Prestations techniques & créatives" rows={pricing.prestations} onChange={(prestations) => setPricing({ ...pricing, prestations })} priceMode="text" />
       </div>
 
       <div>
