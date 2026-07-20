@@ -32,7 +32,7 @@ const DEFAULT_CODES = {
   app: "KBS2026",       // mot de passe général de l'outil
   ceo: "CEO2026",       // Objectif (CEO)
   catherine: "CATH2026", // CRM & Trésorerie (Catherine)
-  planning: "AGENDA2026", // Mon Planning (CEO)
+  ressources: "KBSAUTO2026", // Section Ressources (Boîte à outils, Académie, Plan 30j, Liens, Formation)
   admin: "ADMIN2026",   // Administration — accès total
   reset: "RESET2026",   // Confirmation supplémentaire pour tout réinitialiser
 };
@@ -65,7 +65,7 @@ const DEFAULT_AGENCY = {
 const TEAM_COLORS = ["#C9A227", "#3CBE7C", "#DD6A54", "#7FB3E8", "#C58FE8", "#E8A26B"];
 
 const DEFAULT_TEAM = [
-  { id: "ceo", name: "CEO (Toi)", role: "Stratégie, Technique, Enseignement", color: C.gold, code: "CEO2026",
+  { id: "ceo", name: "CEO", role: "Stratégie, Technique, Enseignement", color: C.gold, code: "CEO2026",
     checklist: ["Vérifier les tâches à valider", "Monter la vidéo finale du jour", "Avancer sur un projet client", "Point d'équipe 15 min"] },
   { id: "catherine", name: "Catherine", role: "Commercial, Closing, Trésorerie", color: C.greenLight, code: "CATH2026",
     checklist: ["Traiter les messages WhatsApp", "Accueillir les nouveaux élèves", "Relancer les prospects en attente", "Mettre à jour la trésorerie"] },
@@ -474,12 +474,6 @@ const DM_SCRIPTS = [
   { stage: "Closing", text: "Super [Prénom] ! Voici ce que tu obtiens avec [Service] :\n✅ Un accompagnement complet, étape par étape\n✅ Un support direct sur WhatsApp\n✅ Nos ressources et guides inclus\nPour [Prix] → paiement via Wave, Orange Money ou Chariow.\nDès que c'est fait, on démarre immédiatement 🚀" },
 ];
 
-function defaultPlanning() {
-  const d = {};
-  for (let i = 1; i <= 30; i++) d[i] = { occupied: false, note: "", heure: "" };
-  return d;
-}
-
 function defaultDispoDays() {
   const d = {};
   for (let i = 1; i <= 30; i++) d[i] = { disponible: false, heure: "", note: "" };
@@ -833,7 +827,6 @@ export default function App() {
   const [checks, setChecks] = useState({ ceo: [], catherine: [], sacko: [] });
   const [links, setLinks] = useState([]);
   const [expenses, setExpenses] = useState([]);
-  const [planning, setPlanning] = useState(defaultPlanning());
   const [dettes, setDettes] = useState([]);
   const [prospection, setProspection] = useState([]);
   const [dispos, setDispos] = useState({});
@@ -841,6 +834,9 @@ export default function App() {
   const [agency, setAgency] = useState(DEFAULT_AGENCY);
   const [devis, setDevis] = useState([]);
   const [guides, setGuides] = useState(DEFAULT_GUIDES);
+  const [formationVideos, setFormationVideos] = useState({});
+  const [formationLiens, setFormationLiens] = useState({});
+  const [ressourcesUnlocked, setRessourcesUnlocked] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -851,14 +847,15 @@ export default function App() {
       setChecks(await loadShared("kbs:checks", { ceo: [], catherine: [], sacko: [] }));
       setLinks(await loadShared("kbs:links", []));
       setExpenses(await loadShared("kbs:expenses", []));
-      setPlanning(await loadShared("kbs:planning", defaultPlanning()));
       setDettes(await loadShared("kbs:dettes", []));
       setProspection(await loadShared("kbs:prospection", []));
       setDispos(await loadShared("kbs:dispos", {}));
-      setCodes(await loadShared("kbs:codes", DEFAULT_CODES));
+      setCodes({ ...DEFAULT_CODES, ...(await loadShared("kbs:codes", DEFAULT_CODES)) });
       setAgency(await loadShared("kbs:agency", DEFAULT_AGENCY));
       setDevis(await loadShared("kbs:devis", []));
       setGuides(await loadShared("kbs:guides", DEFAULT_GUIDES));
+      setFormationVideos(await loadShared("kbs:formationVideos", {}));
+      setFormationLiens(await loadShared("kbs:formationLiens", {}));
       setLoaded(true);
     })();
   }, []);
@@ -870,7 +867,6 @@ export default function App() {
   useEffect(() => { if (loaded) saveShared("kbs:checks", checks); }, [checks, loaded]);
   useEffect(() => { if (loaded) saveShared("kbs:links", links); }, [links, loaded]);
   useEffect(() => { if (loaded) saveShared("kbs:expenses", expenses); }, [expenses, loaded]);
-  useEffect(() => { if (loaded) saveShared("kbs:planning", planning); }, [planning, loaded]);
   useEffect(() => { if (loaded) saveShared("kbs:dettes", dettes); }, [dettes, loaded]);
   useEffect(() => { if (loaded) saveShared("kbs:prospection", prospection); }, [prospection, loaded]);
   useEffect(() => { if (loaded) saveShared("kbs:dispos", dispos); }, [dispos, loaded]);
@@ -878,6 +874,8 @@ export default function App() {
   useEffect(() => { if (loaded) saveShared("kbs:agency", agency); }, [agency, loaded]);
   useEffect(() => { if (loaded) saveShared("kbs:devis", devis); }, [devis, loaded]);
   useEffect(() => { if (loaded) saveShared("kbs:guides", guides); }, [guides, loaded]);
+  useEffect(() => { if (loaded) saveShared("kbs:formationVideos", formationVideos); }, [formationVideos, loaded]);
+  useEffect(() => { if (loaded) saveShared("kbs:formationLiens", formationLiens); }, [formationLiens, loaded]);
 
   const totalCA = useMemo(() => prospects.reduce((s, p) => s + (Number(p.montant) || 0), 0), [prospects]);
   const totalCommission = totalCA * 0.25;
@@ -891,7 +889,6 @@ export default function App() {
     setChecks({});
     setLinks([]);
     setExpenses([]);
-    setPlanning(defaultPlanning());
     setDettes([]);
     setProspection([]);
     setDispos({});
@@ -901,8 +898,7 @@ export default function App() {
 
   const TAB_META = {
     objectif: { label: "Objectif", icon: Target },
-    planning: { label: "Mon Planning", icon: CalendarClock },
-    dispos: { label: "Disponibilités équipe", icon: CalendarCheck },
+    dispos: { label: "Planning", icon: CalendarCheck },
     kanban: { label: "Kanban", icon: LayoutGrid },
     crm: { label: "CRM & Clients", icon: Users },
     devis: { label: "Devis", icon: FileText },
@@ -922,11 +918,10 @@ export default function App() {
   };
 
   const CATEGORIES = [
-    { id: "pilotage", label: "Pilotage", icon: Target, tabs: ["objectif", "planning", "dispos", "kanban"] },
+    { id: "pilotage", label: "Pilotage", icon: Target, tabs: ["objectif", "dispos", "kanban"] },
     { id: "ventes", label: "Ventes & Finance", icon: Wallet, tabs: ["crm", "devis", "tresorerie", "dettes", "tarifs"] },
     { id: "marketing", label: "Marketing", icon: Flame, tabs: ["cible", "copywriting", "prospection", "terrain"] },
-    { id: "ressources", label: "Ressources", icon: Sparkles, tabs: ["outils", "academie", "plan", "liens"] },
-    { id: "formationCat", label: "Formation", icon: BookOpen, tabs: ["formation"] },
+    { id: "ressources", label: "Ressources", icon: Sparkles, tabs: ["outils", "academie", "plan", "liens", "formation"] },
     { id: "admin", label: "Administration", icon: Shield, tabs: ["administration"] },
   ];
 
@@ -1015,7 +1010,6 @@ export default function App() {
 
       <div className="kbs-content" style={{ padding: 16, maxWidth: 720, margin: "0 auto" }}>
         {tab === "objectif" && <TabObjectif goal={goal} setGoal={setGoal} totalCA={totalCA} totalCommission={totalCommission} pct={pct} prospects={prospects} team={team} codes={codes} />}
-        {tab === "planning" && <TabPlanning planning={planning} setPlanning={setPlanning} codes={codes} />}
         {tab === "dispos" && <TabDispos dispos={dispos} setDispos={setDispos} team={team} />}
         {tab === "kanban" && <TabKanban kanban={kanban} setKanban={setKanban} checks={checks} setChecks={setChecks} team={team} codes={codes} />}
         {tab === "crm" && <TabCRM prospects={prospects} setProspects={setProspects} totalCA={totalCA} totalCommission={totalCommission} team={team} codes={codes} agency={agency} />}
@@ -1027,12 +1021,20 @@ export default function App() {
         {tab === "copywriting" && <TabCopywriting />}
         {tab === "prospection" && <TabProspection prospection={prospection} setProspection={setProspection} prospects={prospects} setProspects={setProspects} team={team} />}
         {tab === "terrain" && <TabProspectionTerrain agency={agency} />}
-        {tab === "outils" && <TabOutils />}
-        {tab === "academie" && <TabAcademie />}
-        {tab === "plan" && <TabPlan />}
-        {tab === "liens" && <TabLiens links={links} setLinks={setLinks} team={team} />}
-        {tab === "administration" && <TabAdministration team={team} setTeam={setTeam} codes={codes} setCodes={setCodes} onResetAll={resetAllData} agency={agency} setAgency={setAgency} guides={guides} setGuides={setGuides} />}
-        {tab === "formation" && <TabFormation team={team} codes={codes} guides={guides} />}
+        {category === "ressources" && !ressourcesUnlocked ? (
+          <Card style={{ textAlign: "center" }}>
+            <MiniUnlock code={codes.ressources} label="Section Ressources — entre le code d'accès" onUnlock={() => setRessourcesUnlocked(true)} />
+          </Card>
+        ) : (
+          <>
+            {tab === "outils" && <TabOutils />}
+            {tab === "academie" && <TabAcademie />}
+            {tab === "plan" && <TabPlan />}
+            {tab === "liens" && <TabLiens links={links} setLinks={setLinks} team={team} />}
+            {tab === "formation" && <TabFormation team={team} codes={codes} guides={guides} formationVideos={formationVideos} formationLiens={formationLiens} />}
+          </>
+        )}
+        {tab === "administration" && <TabAdministration team={team} setTeam={setTeam} codes={codes} setCodes={setCodes} onResetAll={resetAllData} agency={agency} setAgency={setAgency} guides={guides} setGuides={setGuides} formationVideos={formationVideos} setFormationVideos={setFormationVideos} formationLiens={formationLiens} setFormationLiens={setFormationLiens} />}
       </div>
       </div>
       )}
@@ -1538,90 +1540,7 @@ function TabKanban({ kanban, setKanban, checks, setChecks, team, codes }) {
   );
 }
 
-/* ---------------------------------- TAB: MON PLANNING ---------------------------------- */
-function TabPlanning({ planning, setPlanning, codes }) {
-  const [ceoUnlocked, setCeoUnlocked] = useState(false);
-  const days = Array.from({ length: 30 }, (_, i) => i + 1);
-
-  function toggleDay(d) {
-    setPlanning({ ...planning, [d]: { ...planning[d], occupied: !planning[d]?.occupied } });
-  }
-  function setNote(d, note) {
-    setPlanning({ ...planning, [d]: { ...planning[d], note } });
-  }
-  function setHeure(d, heure) {
-    setPlanning({ ...planning, [d]: { ...planning[d], heure } });
-  }
-  function resetMonth() { setPlanning(defaultPlanning()); }
-
-  const occupiedCount = days.filter(d => planning[d]?.occupied).length;
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <Card style={{ background: C.cardAlt }}>
-        <div style={{ fontSize: 13 }}>📅 Planning du CEO (Jour 1 à 30 du mois). Catherine peut vérifier ici avant de proposer un rendez-vous à un client.</div>
-      </Card>
-
-      <Card style={{ textAlign: "center" }}>
-        <div style={{ fontSize: 12, color: C.muted }}>Jours occupés ce mois-ci</div>
-        <div style={{ fontFamily: "Sora, sans-serif", fontSize: 22, fontWeight: 800, color: C.white }}>{occupiedCount} / 30</div>
-      </Card>
-
-      {!ceoUnlocked && (
-        <Card style={{ textAlign: "center" }}>
-          <MiniUnlock code={codes.planning} label="Réservé au CEO pour modifier" onUnlock={() => setCeoUnlocked(true)} />
-        </Card>
-      )}
-
-      <Card>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-          <Eyebrow>Grille du mois</Eyebrow>
-          {ceoUnlocked && <button onClick={resetMonth} style={iconBtn}><RotateCcw size={12} /> Réinitialiser</button>}
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6 }}>
-          {days.map(d => {
-            const occ = planning[d]?.occupied;
-            return (
-              <button key={d}
-                onClick={() => ceoUnlocked && toggleDay(d)}
-                title={[planning[d]?.heure, planning[d]?.note].filter(Boolean).join(" — ")}
-                style={{
-                  aspectRatio: "1", borderRadius: 8, border: `1px solid ${occ ? C.rust : C.white}`,
-                  background: occ ? "rgba(183,64,47,0.18)" : "rgba(255,255,255,0.10)",
-                  color: occ ? C.rustLight : C.white, fontWeight: 700, fontSize: 13,
-                  cursor: ceoUnlocked ? "pointer" : "default", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", lineHeight: 1.1
-                }}>
-                {d}
-                {occ && planning[d]?.heure && <span style={{ fontSize: 8, fontWeight: 600 }}>{planning[d].heure}</span>}
-              </button>
-            );
-          })}
-        </div>
-        <div style={{ display: "flex", gap: 14, marginTop: 10, fontSize: 11, color: C.muted }}>
-          <span><span style={{ color: C.white }}>●</span> Libre</span>
-          <span><span style={{ color: C.rustLight }}>●</span> Occupé</span>
-        </div>
-      </Card>
-
-      {ceoUnlocked && (
-        <Card>
-          <Eyebrow>Ajouter une heure et une note sur un jour occupé</Eyebrow>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
-            {days.filter(d => planning[d]?.occupied).map(d => (
-              <div key={d} style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <span style={{ width: 26, fontSize: 12, fontWeight: 700, color: C.rustLight }}>J{d}</span>
-                <input type="time" value={planning[d]?.heure || ""} onChange={e => setHeure(d, e.target.value)} style={{ ...inputStyle, width: 90, fontSize: 12, padding: "6px 8px" }} />
-                <input placeholder="Ex: RDV client, formation…" value={planning[d]?.note || ""} onChange={e => setNote(d, e.target.value)} style={{ ...inputStyle, flex: 1, fontSize: 12, padding: "6px 8px" }} />
-              </div>
-            ))}
-            {occupiedCount === 0 && <div style={{ fontSize: 12, color: C.muted }}>Coche un jour occupé ci-dessus pour ajouter une note.</div>}
-          </div>
-        </Card>
-      )}
-    </div>
-  );
-}
-/* ---------------------------------- TAB: DISPONIBILITÉS ÉQUIPE ---------------------------------- */
+/* ---------------------------------- TAB: DISPONIBILITÉS ÉQUIPE (PLANNING UNIQUE) ---------------------------------- */
 function TabDispos({ dispos, setDispos, team }) {
   const [whoAmI, setWhoAmI] = useState(null);
   const [viewing, setViewing] = useState(null);
@@ -2627,11 +2546,18 @@ function renderGuideText(text) {
 }
 
 /* ---------------------------------- TAB: FORMATION ---------------------------------- */
-function TabFormation({ team, codes, guides }) {
+const FORMATION_SECTIONS = [
+  { id: "videos", label: "Vidéos" },
+  { id: "guides", label: "Guides" },
+  { id: "liens", label: "Liens" },
+];
+
+function TabFormation({ team, codes, guides, formationVideos, formationLiens }) {
   const [code, setCode] = useState("");
   const [error, setError] = useState(false);
   const [unlockedId, setUnlockedId] = useState(null);
   const [viewing, setViewing] = useState(null);
+  const [section, setSection] = useState("guides");
 
   function tryUnlock() {
     if (codeMatches(code, codes.admin)) {
@@ -2653,7 +2579,7 @@ function TabFormation({ team, codes, guides }) {
         <H2>Formation</H2>
         <Card>
           <Eyebrow>Ton guide personnel</Eyebrow>
-          <div style={{ color: C.muted, fontSize: 12, margin: "6px 0 10px" }}>Entre ton code personnel pour voir ton guide. Le CEO peut voir les 3 guides avec le code Administration.</div>
+          <div style={{ color: C.muted, fontSize: 12, margin: "6px 0 10px" }}>Entre ton code personnel pour voir tes vidéos, ton guide et tes liens. Le CEO peut tout voir avec le code Administration.</div>
           <div style={{ display: "flex", gap: 8 }}>
             <input type="password" placeholder="Ton code" value={code}
               onChange={e => { setCode(e.target.value); setError(false); }}
@@ -2669,6 +2595,8 @@ function TabFormation({ team, codes, guides }) {
 
   const availableGuides = unlockedId === "admin" ? Object.keys(GUIDE_LABELS) : [unlockedId];
   const activeId = viewing || availableGuides[0];
+  const videos = (formationVideos || {})[activeId] || [];
+  const liens = (formationLiens || {})[activeId] || [];
 
   return (
     <div>
@@ -2677,7 +2605,7 @@ function TabFormation({ team, codes, guides }) {
         <button onClick={() => { setUnlockedId(null); setViewing(null); }} style={iconBtn}><Lock size={12} /></button>
       </div>
       {availableGuides.length > 1 && (
-        <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
           {availableGuides.map(gid => (
             <button key={gid} onClick={() => setViewing(gid)} style={{
               padding: "6px 12px", borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: "pointer",
@@ -2688,15 +2616,57 @@ function TabFormation({ team, codes, guides }) {
           ))}
         </div>
       )}
-      <div style={{ fontFamily: "Sora, sans-serif", fontWeight: 800, fontSize: 17, marginBottom: 2 }}>Guide de {GUIDE_LABELS[activeId]}</div>
+      <div style={{ fontFamily: "Sora, sans-serif", fontWeight: 800, fontSize: 17, marginBottom: 2 }}>Formation de {GUIDE_LABELS[activeId]}</div>
       <div style={{ color: C.muted, fontSize: 12, marginBottom: 12 }}>KBS DIGITAL AGENCY</div>
-      <Card>{renderGuideText((guides || DEFAULT_GUIDES)[activeId] || "")}</Card>
+
+      <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+        {FORMATION_SECTIONS.map(s => (
+          <button key={s.id} onClick={() => setSection(s.id)} style={{
+            flex: 1, padding: "8px 10px", borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
+            border: `1px solid ${section === s.id ? C.gold : C.border}`,
+            background: section === s.id ? "rgba(214,103,41,0.16)" : "transparent",
+            color: section === s.id ? C.goldLight : C.muted,
+          }}>{s.label}</button>
+        ))}
+      </div>
+
+      {section === "guides" && <Card>{renderGuideText((guides || DEFAULT_GUIDES)[activeId] || "")}</Card>}
+
+      {section === "videos" && (
+        videos.length === 0 ? (
+          <div style={{ color: C.muted, fontSize: 13, textAlign: "center", padding: 20 }}>Aucune vidéo ajoutée pour l'instant.</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {videos.map(v => (
+              <Card key={v.id}>
+                <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 6 }}>{v.label}</div>
+                <a href={v.url} target="_blank" rel="noopener noreferrer" style={{ color: C.goldLight, display: "flex", alignItems: "center", gap: 4, fontSize: 12.5, fontWeight: 700 }}>▶ Regarder <ExternalLink size={13} /></a>
+              </Card>
+            ))}
+          </div>
+        )
+      )}
+
+      {section === "liens" && (
+        liens.length === 0 ? (
+          <div style={{ color: C.muted, fontSize: 13, textAlign: "center", padding: 20 }}>Aucun lien ajouté pour l'instant.</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {liens.map(l => (
+              <Card key={l.id}>
+                <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 6 }}>{l.label}</div>
+                <a href={l.url} target="_blank" rel="noopener noreferrer" style={{ color: C.goldLight, display: "flex", alignItems: "center", gap: 4, fontSize: 12.5, fontWeight: 700 }}>Ouvrir <ExternalLink size={13} /></a>
+              </Card>
+            ))}
+          </div>
+        )
+      )}
     </div>
   );
 }
 
 /* ---------------------------------- TAB: ADMINISTRATION ---------------------------------- */
-function TabAdministration({ team, setTeam, codes, setCodes, onResetAll, agency, setAgency, guides, setGuides }) {
+function TabAdministration({ team, setTeam, codes, setCodes, onResetAll, agency, setAgency, guides, setGuides, formationVideos, setFormationVideos, formationLiens, setFormationLiens }) {
   const [adminUnlocked, setAdminUnlocked] = useState(false);
   const [form, setForm] = useState({ name: "", role: "", checklistText: "" });
   const [editingId, setEditingId] = useState(null);
@@ -2707,6 +2677,8 @@ function TabAdministration({ team, setTeam, codes, setCodes, onResetAll, agency,
   const [agencySaved, setAgencySaved] = useState(false);
   const [guidesForm, setGuidesForm] = useState(guides || DEFAULT_GUIDES);
   const [guidesSaved, setGuidesSaved] = useState(false);
+  const [videoForm, setVideoForm] = useState({});
+  const [lienForm, setLienForm] = useState({});
   const [resetStep, setResetStep] = useState(false);
   const [resetCodeInput, setResetCodeInput] = useState("");
   const [resetError, setResetError] = useState(false);
@@ -2749,6 +2721,28 @@ function TabAdministration({ team, setTeam, codes, setCodes, onResetAll, agency,
     setGuides(guidesForm);
     setGuidesSaved(true);
     setTimeout(() => setGuidesSaved(false), 2000);
+  }
+  function addVideo(gid) {
+    const entry = videoForm[gid];
+    if (!entry?.label?.trim() || !entry?.url?.trim()) return;
+    const current = (formationVideos || {})[gid] || [];
+    setFormationVideos({ ...(formationVideos || {}), [gid]: [...current, { ...entry, id: Date.now() }] });
+    setVideoForm({ ...videoForm, [gid]: { label: "", url: "" } });
+  }
+  function removeVideo(gid, id) {
+    const current = (formationVideos || {})[gid] || [];
+    setFormationVideos({ ...(formationVideos || {}), [gid]: current.filter(v => v.id !== id) });
+  }
+  function addLien(gid) {
+    const entry = lienForm[gid];
+    if (!entry?.label?.trim() || !entry?.url?.trim()) return;
+    const current = (formationLiens || {})[gid] || [];
+    setFormationLiens({ ...(formationLiens || {}), [gid]: [...current, { ...entry, id: Date.now() }] });
+    setLienForm({ ...lienForm, [gid]: { label: "", url: "" } });
+  }
+  function removeLien(gid, id) {
+    const current = (formationLiens || {})[gid] || [];
+    setFormationLiens({ ...(formationLiens || {}), [gid]: current.filter(l => l.id !== id) });
   }
   function confirmReset() {
     if (resetCodeInput !== codes.reset) { setResetError(true); return; }
@@ -2844,8 +2838,8 @@ function TabAdministration({ team, setTeam, codes, setCodes, onResetAll, agency,
             <label style={{ color: C.muted }}>CRM & Trésorerie (Catherine)
               <input value={codesForm.catherine} onChange={e => setCodesForm({ ...codesForm, catherine: e.target.value.toUpperCase() })} style={{ ...inputStyle, marginTop: 4 }} />
             </label>
-            <label style={{ color: C.muted }}>Mon Planning (agenda CEO)
-              <input value={codesForm.planning} onChange={e => setCodesForm({ ...codesForm, planning: e.target.value.toUpperCase() })} style={{ ...inputStyle, marginTop: 4 }} />
+            <label style={{ color: C.muted }}>Ressources (Boîte à outils, Académie, Plan 30j, Liens, Formation)
+              <input value={codesForm.ressources} onChange={e => setCodesForm({ ...codesForm, ressources: e.target.value.toUpperCase() })} style={{ ...inputStyle, marginTop: 4 }} />
             </label>
             <label style={{ color: C.muted }}>Administration (cette section)
               <input value={codesForm.admin} onChange={e => setCodesForm({ ...codesForm, admin: e.target.value.toUpperCase() })} style={{ ...inputStyle, marginTop: 4 }} />
@@ -2885,24 +2879,54 @@ function TabAdministration({ team, setTeam, codes, setCodes, onResetAll, agency,
       </div>
 
       <div>
-        <H2>Guides de Formation (Catherine, Sacko, Oumou)</H2>
-        <Card>
-          <div style={{ color: C.muted, fontSize: 11.5, marginBottom: 10 }}>
-            Modifie ici le contenu du guide de chaque personne — visible dans l'onglet Formation. Format simple : une ligne commençant par <b>## </b> devient un titre de section, une ligne commençant par <b>- </b> devient une puce, une ligne normale devient un paragraphe.
-          </div>
-          {Object.keys(GUIDE_LABELS).map(gid => (
-            <div key={gid} style={{ marginBottom: 14 }}>
-              <label style={{ color: C.text, fontSize: 13, fontWeight: 700 }}>{GUIDE_LABELS[gid]}
-                <textarea
-                  value={guidesForm[gid] || ""}
-                  onChange={e => setGuidesForm({ ...guidesForm, [gid]: e.target.value })}
-                  style={{ ...inputStyle, marginTop: 6, minHeight: 160, resize: "vertical", fontFamily: "monospace", fontSize: 12 }}
-                />
-              </label>
+        <H2>Formation — Vidéos, Guides & Liens (par personne)</H2>
+        <div style={{ color: C.muted, fontSize: 11.5, marginBottom: 10 }}>
+          Chaque personne ne voit que sa propre Formation avec son code personnel. Toi (code Administration) tu vois les 3.
+        </div>
+        {Object.keys(GUIDE_LABELS).map(gid => (
+          <Card key={gid} style={{ marginBottom: 14 }}>
+            <div style={{ fontFamily: "Sora, sans-serif", fontWeight: 800, fontSize: 15, marginBottom: 10, color: C.goldLight }}>{GUIDE_LABELS[gid]}</div>
+
+            <Eyebrow>Vidéos</Eyebrow>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6, marginBottom: 8 }}>
+              {((formationVideos || {})[gid] || []).map(v => (
+                <div key={v.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: C.cardAlt, borderRadius: 8, padding: "6px 10px" }}>
+                  <span style={{ fontSize: 12.5 }}>{v.label}</span>
+                  <button onClick={() => removeVideo(gid, v.id)} style={{ background: "none", border: "none", color: C.rustLight, cursor: "pointer" }}><Trash2 size={14} /></button>
+                </div>
+              ))}
             </div>
-          ))}
-          <button onClick={saveGuides} style={btnGold}><Save size={14} /> {guidesSaved ? "Enregistré ✓" : "Enregistrer les guides"}</button>
-        </Card>
+            <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+              <input placeholder="Titre de la vidéo" value={videoForm[gid]?.label || ""} onChange={e => setVideoForm({ ...videoForm, [gid]: { ...videoForm[gid], label: e.target.value } })} style={{ ...inputStyle, flex: 1 }} />
+              <input placeholder="Lien (YouTube, Drive…)" value={videoForm[gid]?.url || ""} onChange={e => setVideoForm({ ...videoForm, [gid]: { ...videoForm[gid], url: e.target.value } })} style={{ ...inputStyle, flex: 1 }} />
+              <button onClick={() => addVideo(gid)} style={{ ...iconBtn, padding: "0 12px" }}><Plus size={14} /></button>
+            </div>
+
+            <Eyebrow>Guide (texte)</Eyebrow>
+            <textarea
+              value={guidesForm[gid] || ""}
+              onChange={e => setGuidesForm({ ...guidesForm, [gid]: e.target.value })}
+              style={{ ...inputStyle, marginTop: 6, marginBottom: 14, minHeight: 140, resize: "vertical", fontFamily: "monospace", fontSize: 12 }}
+            />
+
+            <Eyebrow>Liens</Eyebrow>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6, marginBottom: 8 }}>
+              {((formationLiens || {})[gid] || []).map(l => (
+                <div key={l.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: C.cardAlt, borderRadius: 8, padding: "6px 10px" }}>
+                  <span style={{ fontSize: 12.5 }}>{l.label}</span>
+                  <button onClick={() => removeLien(gid, l.id)} style={{ background: "none", border: "none", color: C.rustLight, cursor: "pointer" }}><Trash2 size={14} /></button>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <input placeholder="Titre du lien" value={lienForm[gid]?.label || ""} onChange={e => setLienForm({ ...lienForm, [gid]: { ...lienForm[gid], label: e.target.value } })} style={{ ...inputStyle, flex: 1 }} />
+              <input placeholder="https://…" value={lienForm[gid]?.url || ""} onChange={e => setLienForm({ ...lienForm, [gid]: { ...lienForm[gid], url: e.target.value } })} style={{ ...inputStyle, flex: 1 }} />
+              <button onClick={() => addLien(gid)} style={{ ...iconBtn, padding: "0 12px" }}><Plus size={14} /></button>
+            </div>
+          </Card>
+        ))}
+        <div style={{ color: C.muted, fontSize: 11.5, marginBottom: 6 }}>Les vidéos et liens s'enregistrent immédiatement. Pour le texte des guides, clique sur "Enregistrer les guides" ci-dessous une fois tes modifications faites.</div>
+        <button onClick={saveGuides} style={btnGold}><Save size={14} /> {guidesSaved ? "Enregistré ✓" : "Enregistrer les guides"}</button>
       </div>
 
       <div>
