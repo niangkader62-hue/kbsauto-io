@@ -19,10 +19,10 @@ const supabase = createClient(
 
 /* ---------------------------------- PALETTE ---------------------------------- */
 const C = {
-  bg: "#0D0D0D", card: "#1C1C1C", cardAlt: "#262626", border: "#333333",
-  gold: "#D66729", goldLight: "#E8894A", green: "#1F7A4D", greenLight: "#3CBE7C",
-  rust: "#B7402F", rustLight: "#DD6A54", text: "#F5F5F5", muted: "#8C8C8C",
-  white: "#FFFFFF",
+  bg: "#F7F6F3", card: "#FFFFFF", cardAlt: "#FDFCFA", border: "#E7E4DD",
+  gold: "#2E4374", goldLight: "#4A63A0", green: "#1F7A4D", greenLight: "#3CBE7C",
+  rust: "#B7402F", rustLight: "#DD6A54", text: "#1C1A17", muted: "#7A7468",
+  white: "#FFFFFF", black: "#0D0D0D",
 };
 
 const FONT_IMPORT = `@import url('https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap');`;
@@ -90,7 +90,7 @@ const DEFAULT_AGENCY = {
 
 /* ---------------------------------- STATIC DATA ---------------------------------- */
 
-const TEAM_COLORS = ["#C9A227", "#3CBE7C", "#DD6A54", "#7FB3E8", "#C58FE8", "#E8A26B"];
+const TEAM_COLORS = ["#A8790F", "#1F7A4D", "#B7402F", "#2E5FA3", "#7A3FA0", "#B5651D"];
 
 const DEFAULT_TEAM = [
   { id: "ceo", name: "CEO", role: "Stratégie, Technique, Enseignement", color: C.gold, code: "CEO2026",
@@ -99,7 +99,7 @@ const DEFAULT_TEAM = [
     checklist: ["Traiter les messages WhatsApp", "Accueillir les nouveaux élèves", "Relancer les prospects en attente", "Mettre à jour la trésorerie"] },
   { id: "sacko", name: "Sacko", role: "Coordination, Graphisme", color: C.rustLight, code: "SACKO2026",
     checklist: ["Coordonner les tâches de l'équipe", "Créer les visuels du jour", "Vérifier la cohérence graphique", "Point d'équipe 15 min"] },
-  { id: "oumou", name: "Oumou", role: "Créatrice de contenu", color: "#7FB3E8", code: "OUMOU2026",
+  { id: "oumou", name: "Oumou", role: "Créatrice de contenu", color: "#2E5FA3", code: "OUMOU2026",
     checklist: ["Écrire un script vidéo", "Tourner une vidéo", "Analyser une tendance TikTok", "Répondre aux commentaires"] },
 ];
 
@@ -880,7 +880,7 @@ function NotificationBanner() {
   if (!supported || status === "granted") return null;
 
   return (
-    <div style={{ background: "rgba(214,103,41,0.12)", borderBottom: `1px solid ${C.border}`, padding: "10px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+    <div style={{ background: "rgba(46,67,116,0.10)", borderBottom: `1px solid ${C.border}`, padding: "10px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
       <div style={{ fontSize: 12.5, color: C.text, display: "flex", alignItems: "center", gap: 6 }}><Bell size={14} color={C.goldLight} /> Active les notifications pour être averti en temps réel de ce qui se passe dans l'équipe.</div>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <button onClick={enable} disabled={busy} style={{ ...btnGold, width: "auto", padding: "7px 14px", fontSize: 12 }}>{busy ? "..." : "Activer"}</button>
@@ -1065,9 +1065,9 @@ export default function App() {
                   width: 48, height: 48, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center",
                   background: active ? `linear-gradient(135deg, ${C.goldLight}, ${C.gold})` : C.card,
                   border: `1px solid ${active ? C.gold : C.border}`,
-                  boxShadow: active ? `0 4px 14px rgba(214,103,41,0.4)` : "none",
+                  boxShadow: active ? `0 4px 14px rgba(46,67,116,0.35)` : "none",
                 }}>
-                  <Icon size={19} color={active ? "#1A0F00" : C.muted} />
+                  <Icon size={19} color={active ? "#FFFFFF" : C.muted} />
                 </div>
                 <span style={{ fontSize: 11, fontWeight: 700, textAlign: "center", lineHeight: 1.2, color: active ? C.goldLight : C.muted }}>{c.label}</span>
               </div>
@@ -1089,7 +1089,7 @@ export default function App() {
                 display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap",
                 padding: "8px 13px", borderRadius: 12, fontSize: 12.5, fontWeight: 700,
                 border: `1px solid ${active ? C.gold : C.border}`,
-                background: active ? "rgba(214,103,41,0.16)" : C.card,
+                background: active ? "rgba(46,67,116,0.12)" : C.card,
                 color: active ? C.goldLight : C.muted, flexShrink: 0, cursor: "pointer",
                 scrollSnapAlign: "start"
               }}>
@@ -1694,7 +1694,7 @@ function TabDispos({ dispos, setDispos, team }) {
                 display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap",
                 padding: "6px 10px", borderRadius: 999, fontSize: 12, fontWeight: 700,
                 border: `1px solid ${active ? m.color : C.border}`,
-                background: active ? "rgba(255,255,255,0.06)" : "transparent",
+                background: active ? "rgba(46,67,116,0.08)" : "transparent",
                 color: active ? m.color : C.muted, cursor: "pointer", flexShrink: 0
               }}>{m.name}{m.id === whoAmI ? " (toi)" : ""}</button>
             );
@@ -1703,7 +1703,7 @@ function TabDispos({ dispos, setDispos, team }) {
 
         <Card style={{ textAlign: "center" }}>
           <div style={{ fontSize: 12, color: C.muted }}>Jours disponibles — {viewingMember?.name}</div>
-          <div style={{ fontFamily: "Sora, sans-serif", fontSize: 22, fontWeight: 800, color: C.white }}>{availableCount} / 30</div>
+          <div style={{ fontFamily: "Sora, sans-serif", fontSize: 22, fontWeight: 800, color: C.text }}>{availableCount} / 30</div>
         </Card>
 
         <Card>
@@ -1727,9 +1727,9 @@ function TabDispos({ dispos, setDispos, team }) {
                   title={[dayData[d]?.heure, dayData[d]?.note].filter(Boolean).join(" — ")}
                   style={{
                     aspectRatio: "1", borderRadius: 8,
-                    border: isToday ? `2px solid ${C.goldLight}` : `1px solid ${av ? C.greenLight : C.white}`,
-                    background: av ? "rgba(60,190,124,0.18)" : "rgba(255,255,255,0.10)",
-                    color: av ? C.greenLight : C.white, fontWeight: 700, fontSize: 13,
+                    border: isToday ? `2px solid ${C.goldLight}` : `1px solid ${av ? C.greenLight : C.border}`,
+                    background: av ? "rgba(60,190,124,0.18)" : "rgba(28,26,23,0.035)",
+                    color: av ? C.greenLight : C.muted, fontWeight: 700, fontSize: 13,
                     cursor: isEditing ? "pointer" : "default", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", lineHeight: 1.1
                   }}>
                   {d}
@@ -1739,7 +1739,7 @@ function TabDispos({ dispos, setDispos, team }) {
             })}
           </div>
           <div style={{ display: "flex", gap: 14, marginTop: 10, fontSize: 11, color: C.muted }}>
-            <span><span style={{ color: C.white }}>●</span> Indisponible</span>
+            <span><span style={{ color: C.muted }}>●</span> Indisponible</span>
             <span><span style={{ color: C.greenLight }}>●</span> Disponible</span>
           </div>
         </Card>
@@ -2067,7 +2067,7 @@ function TabDettes({ dettes, setDettes, prospects }) {
                 <button onClick={() => removeDette(d.id)} style={{ background: "none", border: "none", color: C.rustLight, cursor: "pointer" }}><Trash2 size={16} /></button>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color, background: "rgba(255,255,255,0.05)", padding: "3px 8px", borderRadius: 6 }}>{label}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color, background: "rgba(28,26,23,0.05)", padding: "3px 8px", borderRadius: 6 }}>{label}</span>
                 <div style={{ fontWeight: 700, color: C.goldLight, fontSize: 13 }}>{fcfa(d.montantDu)}</div>
               </div>
               {d.statut !== "Payée" && (
@@ -2190,7 +2190,7 @@ function TabProspection({ prospection, setProspection, prospects, setProspects, 
     removeEntry(p.id);
   }
 
-  const interetColor = { Chaud: C.rustLight, Tiède: C.goldLight, Froid: "#7FB3E8" };
+  const interetColor = { Chaud: C.rustLight, Tiède: C.goldLight, Froid: "#2E5FA3" };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -2777,7 +2777,7 @@ function TabFormation({ team, codes, guides, formationVideos, formationLiens }) 
             <button key={gid} onClick={() => setViewing(gid)} style={{
               padding: "6px 12px", borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: "pointer",
               border: `1px solid ${activeId === gid ? C.gold : C.border}`,
-              background: activeId === gid ? "rgba(214,103,41,0.16)" : "transparent",
+              background: activeId === gid ? "rgba(46,67,116,0.12)" : "transparent",
               color: activeId === gid ? C.goldLight : C.muted,
             }}>{GUIDE_LABELS[gid]}</button>
           ))}
@@ -2791,7 +2791,7 @@ function TabFormation({ team, codes, guides, formationVideos, formationLiens }) 
           <button key={s.id} onClick={() => setSection(s.id)} style={{
             flex: 1, padding: "8px 10px", borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
             border: `1px solid ${section === s.id ? C.gold : C.border}`,
-            background: section === s.id ? "rgba(214,103,41,0.16)" : "transparent",
+            background: section === s.id ? "rgba(46,67,116,0.12)" : "transparent",
             color: section === s.id ? C.goldLight : C.muted,
           }}>{s.label}</button>
         ))}
@@ -3138,5 +3138,5 @@ function TabAdministration({ team, setTeam, codes, setCodes, onResetAll, agency,
 
 /* ---------------------------------- SHARED STYLES ---------------------------------- */
 const inputStyle = { background: C.cardAlt, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, padding: "9px 10px", fontSize: 13, width: "100%" };
-const btnGold = { display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: C.gold, color: "#1A1300", border: "none", borderRadius: 8, padding: "10px", fontWeight: 700, fontSize: 13, cursor: "pointer" };
+const btnGold = { display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: C.gold, color: C.white, border: "none", borderRadius: 8, padding: "10px", fontWeight: 700, fontSize: 13, cursor: "pointer" };
 const iconBtn = { background: "none", border: `1px solid ${C.border}`, borderRadius: 6, color: C.muted, padding: "3px 6px", fontSize: 11, cursor: "pointer" };
