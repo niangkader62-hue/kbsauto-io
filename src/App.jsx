@@ -1545,6 +1545,9 @@ function TabDispos({ dispos, setDispos, team }) {
   const [whoAmI, setWhoAmI] = useState(null);
   const [viewing, setViewing] = useState(null);
   const days = Array.from({ length: 30 }, (_, i) => i + 1);
+  const now = new Date();
+  const firstWeekdayOffset = new Date(now.getFullYear(), now.getMonth(), 1).getDay(); // 0=Dim ... 6=Sam
+  const todayDayNum = now.getDate();
 
   useEffect(() => {
     if (!viewing && team.length) setViewing(team[0].id);
@@ -1614,21 +1617,27 @@ function TabDispos({ dispos, setDispos, team }) {
             <Eyebrow>{isEditing ? "Ton calendrier (modifiable)" : `Calendrier de ${viewingMember?.name} (lecture seule)`}</Eyebrow>
             {isEditing && <button onClick={resetMine} style={iconBtn}><RotateCcw size={12} /> Réinitialiser</button>}
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginBottom: 6 }}>
+            {WEEKDAYS_FR.map(w => (
+              <div key={w} style={{ textAlign: "center", fontSize: 9.5, fontWeight: 800, letterSpacing: 0.5, color: (w === "Sam" || w === "Dim") ? C.gold : C.muted }}>{w}</div>
+            ))}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6 }}>
+            {Array.from({ length: firstWeekdayOffset }).map((_, i) => <div key={`blank-${i}`} />)}
             {days.map(d => {
               const av = dayData[d]?.disponible;
-              const weekend = weekdayAbbrev(d) === "Sam" || weekdayAbbrev(d) === "Dim";
+              const isToday = d === todayDayNum;
               return (
                 <button key={d}
                   onClick={() => toggleDay(d)}
                   title={[dayData[d]?.heure, dayData[d]?.note].filter(Boolean).join(" — ")}
                   style={{
-                    aspectRatio: "1", borderRadius: 8, border: `1px solid ${av ? C.greenLight : C.white}`,
+                    aspectRatio: "1", borderRadius: 8,
+                    border: isToday ? `2px solid ${C.goldLight}` : `1px solid ${av ? C.greenLight : C.white}`,
                     background: av ? "rgba(60,190,124,0.18)" : "rgba(255,255,255,0.10)",
                     color: av ? C.greenLight : C.white, fontWeight: 700, fontSize: 13,
                     cursor: isEditing ? "pointer" : "default", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", lineHeight: 1.1
                   }}>
-                  <span style={{ fontSize: 8, fontWeight: 700, opacity: 0.75, color: weekend ? C.gold : "inherit" }}>{weekdayAbbrev(d)}</span>
                   {d}
                   {av && dayData[d]?.heure && <span style={{ fontSize: 8, fontWeight: 600 }}>{dayData[d].heure}</span>}
                 </button>
