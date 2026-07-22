@@ -25,7 +25,11 @@ const C = {
   white: "#FFFFFF", black: "#0D0D0D",
 };
 
-const FONT_IMPORT = `@import url('https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap');`;
+const FONT_IMPORT = `@import url('https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap');
+.kbs-navbar::-webkit-scrollbar { height: 0; display: none; }
+.kbs-navbar { scrollbar-width: none; -ms-overflow-style: none; }
+@keyframes kbsSwipeHint { 0%, 100% { opacity: .45; transform: translateX(0); } 50% { opacity: 1; transform: translateX(4px); } }
+.kbs-hint { animation: kbsSwipeHint 1.9s ease-in-out infinite; }`;
 
 /* Codes d'accès par défaut — modifiables ensuite directement dans l'onglet Administration */
 const DEFAULT_CODES = {
@@ -911,14 +915,16 @@ export default function App() {
   const [agency, setAgency] = useState(DEFAULT_AGENCY);
   const [devis, setDevis] = useState([]);
   const [guides, setGuides] = useState(DEFAULT_GUIDES);
-  const [formationVideos, setFormationVideos] = useState({});
   const [formationLiens, setFormationLiens] = useState({});
   const [ressourcesUnlocked, setRessourcesUnlocked] = useState(false);
   const [pricing, setPricing] = useState(DEFAULT_PRICING);
 
   useEffect(() => {
     (async () => {
-      setTeam(await loadShared("kbs:team", DEFAULT_TEAM));
+      // Filet de securite : tout membre enregistre sans code personnel en recoit un
+      // automatiquement, sinon sa checklist et sa Formation resteraient inaccessibles.
+      const loadedTeam = await loadShared("kbs:team", DEFAULT_TEAM);
+      setTeam((loadedTeam || []).map(m => m.code ? m : { ...m, code: autoCode(m.name) }));
       setGoal(await loadShared("kbs:goal", 250000));
       setProspects(await loadShared("kbs:prospects", []));
       setKanban(await loadShared("kbs:kanban", { todo: [], doing: [], review: [], done: [] }));
@@ -932,7 +938,6 @@ export default function App() {
       setAgency(await loadShared("kbs:agency", DEFAULT_AGENCY));
       setDevis(await loadShared("kbs:devis", []));
       setGuides(await loadShared("kbs:guides", DEFAULT_GUIDES));
-      setFormationVideos(await loadShared("kbs:formationVideos", {}));
       setFormationLiens(await loadShared("kbs:formationLiens", {}));
       setPricing({ ...DEFAULT_PRICING, ...(await loadShared("kbs:pricing", DEFAULT_PRICING)) });
       setLoaded(true);
@@ -953,7 +958,6 @@ export default function App() {
   useEffect(() => { if (loaded) saveShared("kbs:agency", agency); }, [agency, loaded]);
   useEffect(() => { if (loaded) saveShared("kbs:devis", devis); }, [devis, loaded]);
   useEffect(() => { if (loaded) saveShared("kbs:guides", guides); }, [guides, loaded]);
-  useEffect(() => { if (loaded) saveShared("kbs:formationVideos", formationVideos); }, [formationVideos, loaded]);
   useEffect(() => { if (loaded) saveShared("kbs:formationLiens", formationLiens); }, [formationLiens, loaded]);
   useEffect(() => { if (loaded) saveShared("kbs:pricing", pricing); }, [pricing, loaded]);
 
@@ -995,7 +999,12 @@ export default function App() {
     academie: { label: "Académie Gratuite", icon: GraduationCap },
     plan: { label: "Plan 30 jours", icon: CalendarDays },
     liens: { label: "Liens partagés", icon: Link2 },
-    administration: { label: "Administration", icon: Shield },
+    adminEquipe: { label: "Équipe", icon: Users },
+    adminCodes: { label: "Codes d'accès", icon: KeyRound },
+    adminAgence: { label: "Agence", icon: MapPin },
+    adminTarifs: { label: "Tarifs", icon: Banknote },
+    adminFormation: { label: "Formation", icon: BookOpen },
+    adminReset: { label: "Réinitialisation", icon: AlertTriangle },
     formation: { label: "Formation", icon: BookOpen },
   };
 
@@ -1004,7 +1013,7 @@ export default function App() {
     { id: "ventes", label: "Ventes & Finance", icon: Wallet, tabs: ["crm", "devis", "tresorerie", "dettes", "tarifs"] },
     { id: "marketing", label: "Marketing", icon: Flame, tabs: ["cible", "copywriting", "prospection", "terrain"] },
     { id: "ressources", label: "Ressources", icon: Sparkles, tabs: ["outils", "academie", "plan", "liens", "formation"] },
-    { id: "admin", label: "Administration", icon: Shield, tabs: ["administration"] },
+    { id: "admin", label: "Administration", icon: Shield, tabs: ["adminEquipe", "adminCodes", "adminAgence", "adminTarifs", "adminFormation", "adminReset"] },
   ];
 
   function selectCategory(catId) {
@@ -1098,7 +1107,12 @@ export default function App() {
             );
           })}
         </div>
-        <div style={{ position: "absolute", top: 0, bottom: 0, right: 0, width: 22, background: `linear-gradient(270deg, ${C.cardAlt}, transparent)`, pointerEvents: "none" }} />
+        <div style={{ position: "absolute", top: 0, bottom: 0, right: 0, width: 30, background: `linear-gradient(270deg, ${C.cardAlt} 40%, transparent)`, pointerEvents: "none" }} />
+        {CATEGORIES.find(c => c.id === category).tabs.length > 2 && (
+          <div className="kbs-hint" style={{ position: "absolute", right: 6, top: "50%", marginTop: -9, pointerEvents: "none", color: C.goldLight, display: "flex", alignItems: "center" }}>
+            <ChevronRight size={18} />
+          </div>
+        )}
       </div>
 
       <div className="kbs-content" style={{ padding: 16, maxWidth: 720, margin: "0 auto" }}>
@@ -1124,10 +1138,10 @@ export default function App() {
             {tab === "academie" && <TabAcademie />}
             {tab === "plan" && <TabPlan />}
             {tab === "liens" && <TabLiens links={links} setLinks={setLinks} team={team} />}
-            {tab === "formation" && <TabFormation team={team} codes={codes} guides={guides} formationVideos={formationVideos} formationLiens={formationLiens} />}
+            {tab === "formation" && <TabFormation team={team} codes={codes} guides={guides} formationLiens={formationLiens} />}
           </>
         )}
-        {tab === "administration" && <TabAdministration team={team} setTeam={setTeam} codes={codes} setCodes={setCodes} onResetAll={resetAllData} agency={agency} setAgency={setAgency} guides={guides} setGuides={setGuides} formationVideos={formationVideos} setFormationVideos={setFormationVideos} formationLiens={formationLiens} setFormationLiens={setFormationLiens} pricing={pricing} setPricing={setPricing} />}
+        {category === "admin" && <TabAdministration section={tab} team={team} setTeam={setTeam} codes={codes} setCodes={setCodes} onResetAll={resetAllData} agency={agency} setAgency={setAgency} guides={guides} setGuides={setGuides} formationLiens={formationLiens} setFormationLiens={setFormationLiens} pricing={pricing} setPricing={setPricing} />}
       </div>
       </div>
       )}
@@ -2526,8 +2540,6 @@ function TabLiens({ links, setLinks, team }) {
 /* ---------------------------------- FORMATION: GUIDES EDITABLES ---------------------------------- */
 // Format simple et editable dans Administration :
 // "## Titre" = en-tete de section — "- texte" = puce — ligne normale = paragraphe
-const GUIDE_LABELS = { catherine: "Catherine", sacko: "Sacko", oumou: "Oumou" };
-
 const DEFAULT_GUIDES = {
   catherine: `## Ta posture
 Tu es le premier visage professionnel de KBS DIGITAL AGENCY.
@@ -2714,26 +2726,29 @@ function renderGuideText(text) {
 
 /* ---------------------------------- TAB: FORMATION ---------------------------------- */
 const FORMATION_SECTIONS = [
-  { id: "videos", label: "Vidéos" },
-  { id: "guides", label: "Guides" },
+  { id: "guides", label: "Guide" },
   { id: "liens", label: "Liens" },
 ];
 
-function TabFormation({ team, codes, guides, formationVideos, formationLiens }) {
+// Les sections de Formation suivent l'equipe : tout nouveau membre recrute dans
+// Administration obtient automatiquement son guide et ses liens, deverrouilles
+// par son propre code personnel.
+function TabFormation({ team, codes, guides, formationLiens }) {
   const [code, setCode] = useState("");
   const [error, setError] = useState(false);
   const [unlockedId, setUnlockedId] = useState(null);
   const [viewing, setViewing] = useState(null);
   const [section, setSection] = useState("guides");
 
+  const labels = Object.fromEntries(team.map(m => [m.id, m.name]));
+
   function tryUnlock() {
     if (codeMatches(code, codes.admin)) {
-      const first = Object.keys(GUIDE_LABELS)[0];
-      setUnlockedId("admin"); setError(false); setCode(""); setViewing(first);
+      setUnlockedId("admin"); setError(false); setCode(""); setViewing(team[0]?.id || null);
       return;
     }
     const member = team.find(m => codeMatches(code, m.code));
-    if (member && GUIDE_LABELS[member.id]) {
+    if (member) {
       setUnlockedId(member.id); setError(false); setCode(""); setViewing(member.id);
       return;
     }
@@ -2745,8 +2760,8 @@ function TabFormation({ team, codes, guides, formationVideos, formationLiens }) 
       <div>
         <H2>Formation</H2>
         <Card>
-          <Eyebrow>Ton guide personnel</Eyebrow>
-          <div style={{ color: C.muted, fontSize: 12, margin: "6px 0 10px" }}>Entre ton code personnel pour voir tes vidéos, ton guide et tes liens. Le CEO peut tout voir avec le code Administration.</div>
+          <Eyebrow>Ton espace personnel</Eyebrow>
+          <div style={{ color: C.muted, fontSize: 12, margin: "6px 0 10px" }}>Entre ton code personnel pour voir ton guide et tes liens. Le CEO voit tout le monde avec le code Administration.</div>
           <div style={{ display: "flex", gap: 8 }}>
             <input type="password" placeholder="Ton code" value={code}
               onChange={e => { setCode(e.target.value); setError(false); }}
@@ -2760,10 +2775,10 @@ function TabFormation({ team, codes, guides, formationVideos, formationLiens }) 
     );
   }
 
-  const availableGuides = unlockedId === "admin" ? Object.keys(GUIDE_LABELS) : [unlockedId];
-  const activeId = viewing || availableGuides[0];
-  const videos = (formationVideos || {})[activeId] || [];
+  const availableGuides = unlockedId === "admin" ? team.map(m => m.id) : [unlockedId];
+  const activeId = (viewing && availableGuides.includes(viewing)) ? viewing : availableGuides[0];
   const liens = (formationLiens || {})[activeId] || [];
+  const guideText = (guides || {})[activeId] || "";
 
   return (
     <div>
@@ -2772,18 +2787,18 @@ function TabFormation({ team, codes, guides, formationVideos, formationLiens }) 
         <button onClick={() => { setUnlockedId(null); setViewing(null); }} style={iconBtn}><Lock size={12} /></button>
       </div>
       {availableGuides.length > 1 && (
-        <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+        <div className="kbs-navbar" style={{ display: "flex", gap: 6, marginBottom: 10, overflowX: "auto", paddingBottom: 2 }}>
           {availableGuides.map(gid => (
             <button key={gid} onClick={() => setViewing(gid)} style={{
-              padding: "6px 12px", borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: "pointer",
+              padding: "6px 12px", borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: "pointer", flexShrink: 0,
               border: `1px solid ${activeId === gid ? C.gold : C.border}`,
               background: activeId === gid ? "rgba(192,138,62,0.16)" : "transparent",
               color: activeId === gid ? C.goldLight : C.muted,
-            }}>{GUIDE_LABELS[gid]}</button>
+            }}>{labels[gid]}</button>
           ))}
         </div>
       )}
-      <div style={{ fontFamily: "Sora, sans-serif", fontWeight: 800, fontSize: 17, marginBottom: 2 }}>Formation de {GUIDE_LABELS[activeId]}</div>
+      <div style={{ fontFamily: "Sora, sans-serif", fontWeight: 800, fontSize: 17, marginBottom: 2 }}>Formation de {labels[activeId] || "—"}</div>
       <div style={{ color: C.muted, fontSize: 12, marginBottom: 12 }}>KBS DIGITAL AGENCY</div>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
@@ -2797,26 +2812,15 @@ function TabFormation({ team, codes, guides, formationVideos, formationLiens }) 
         ))}
       </div>
 
-      {section === "guides" && <Card>{renderGuideText((guides || DEFAULT_GUIDES)[activeId] || "")}</Card>}
-
-      {section === "videos" && (
-        videos.length === 0 ? (
-          <div style={{ color: C.muted, fontSize: 13, textAlign: "center", padding: 20 }}>Aucune vidéo ajoutée pour l'instant.</div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {videos.map(v => (
-              <Card key={v.id}>
-                <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 6 }}>{v.label}</div>
-                <a href={v.url} target="_blank" rel="noopener noreferrer" style={{ color: C.goldLight, display: "flex", alignItems: "center", gap: 4, fontSize: 12.5, fontWeight: 700 }}>▶ Regarder <ExternalLink size={13} /></a>
-              </Card>
-            ))}
-          </div>
-        )
+      {section === "guides" && (
+        guideText.trim() === "" ? (
+          <div style={{ color: C.muted, fontSize: 13, textAlign: "center", padding: 20 }}>Aucun guide pour l'instant. Le CEO peut en ajouter un depuis Administration.</div>
+        ) : <Card>{renderGuideText(guideText)}</Card>
       )}
 
       {section === "liens" && (
         liens.length === 0 ? (
-          <div style={{ color: C.muted, fontSize: 13, textAlign: "center", padding: 20 }}>Aucun lien ajouté pour l'instant.</div>
+          <div style={{ color: C.muted, fontSize: 13, textAlign: "center", padding: 20 }}>Aucun lien ajoute pour l'instant.</div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {liens.map(l => (
@@ -2833,7 +2837,7 @@ function TabFormation({ team, codes, guides, formationVideos, formationLiens }) 
 }
 
 /* ---------------------------------- TAB: ADMINISTRATION ---------------------------------- */
-function TabAdministration({ team, setTeam, codes, setCodes, onResetAll, agency, setAgency, guides, setGuides, formationVideos, setFormationVideos, formationLiens, setFormationLiens, pricing, setPricing }) {
+function TabAdministration({ section, team, setTeam, codes, setCodes, onResetAll, agency, setAgency, guides, setGuides, formationLiens, setFormationLiens, pricing, setPricing }) {
   const [adminUnlocked, setAdminUnlocked] = useState(false);
   const [form, setForm] = useState({ name: "", role: "", checklistText: "" });
   const [editingId, setEditingId] = useState(null);
@@ -2844,7 +2848,6 @@ function TabAdministration({ team, setTeam, codes, setCodes, onResetAll, agency,
   const [agencySaved, setAgencySaved] = useState(false);
   const [guidesForm, setGuidesForm] = useState(guides || DEFAULT_GUIDES);
   const [guidesSaved, setGuidesSaved] = useState(false);
-  const [videoForm, setVideoForm] = useState({});
   const [lienForm, setLienForm] = useState({});
   const [resetStep, setResetStep] = useState(false);
   const [resetCodeInput, setResetCodeInput] = useState("");
@@ -2889,17 +2892,6 @@ function TabAdministration({ team, setTeam, codes, setCodes, onResetAll, agency,
     setGuidesSaved(true);
     setTimeout(() => setGuidesSaved(false), 2000);
   }
-  function addVideo(gid) {
-    const entry = videoForm[gid];
-    if (!entry?.label?.trim() || !entry?.url?.trim()) return;
-    const current = (formationVideos || {})[gid] || [];
-    setFormationVideos({ ...(formationVideos || {}), [gid]: [...current, { ...entry, id: Date.now() }] });
-    setVideoForm({ ...videoForm, [gid]: { label: "", url: "" } });
-  }
-  function removeVideo(gid, id) {
-    const current = (formationVideos || {})[gid] || [];
-    setFormationVideos({ ...(formationVideos || {}), [gid]: current.filter(v => v.id !== id) });
-  }
   function addLien(gid) {
     const entry = lienForm[gid];
     if (!entry?.label?.trim() || !entry?.url?.trim()) return;
@@ -2931,6 +2923,7 @@ function TabAdministration({ team, setTeam, codes, setCodes, onResetAll, agency,
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {section === "adminEquipe" && (<>
       <div>
         <H2>Équipe actuelle ({team.length})</H2>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -2986,7 +2979,9 @@ function TabAdministration({ team, setTeam, codes, setCodes, onResetAll, agency,
         </Card>
         <div style={{ color: C.muted, fontSize: 11.5, marginTop: 6 }}>La personne apparaît immédiatement dans le CRM, la Trésorerie, le Kanban, les Disponibilités et les Liens partagés, avec un code personnel généré automatiquement (modifiable ensuite avec le crayon).</div>
       </div>
+      </>)}
 
+      {section === "adminCodes" && (<>
       <div>
         <H2>Codes d'accès — modifiables</H2>
         <Card style={{ borderColor: C.gold, marginBottom: 10 }}>
@@ -3019,7 +3014,9 @@ function TabAdministration({ team, setTeam, codes, setCodes, onResetAll, agency,
           <div style={{ color: C.muted, fontSize: 11, marginTop: 10 }}>Chaque code est indépendant : connaître l'un ne donne accès à aucun autre. Les codes personnels de checklist se modifient individuellement ci-dessus, dans la fiche de chaque membre.</div>
         </Card>
       </div>
+      </>)}
 
+      {section === "adminAgence" && (<>
       <div>
         <H2>Coordonnées de l'agence (reçus & devis PDF)</H2>
         <Card>
@@ -3044,7 +3041,9 @@ function TabAdministration({ team, setTeam, codes, setCodes, onResetAll, agency,
           <div style={{ color: C.muted, fontSize: 11, marginTop: 10 }}>Ces informations apparaissent automatiquement en en-tête et en pied de page de chaque reçu et devis PDF.</div>
         </Card>
       </div>
+      </>)}
 
+      {section === "adminTarifs" && (<>
       <div>
         <H2>Tarifs</H2>
         <div style={{ color: C.muted, fontSize: 11.5, marginBottom: 10 }}>
@@ -3054,58 +3053,53 @@ function TabAdministration({ team, setTeam, codes, setCodes, onResetAll, agency,
         <PricingListEditor title="Formations & Coaching (En ligne / Présentiel)" rows={pricing.formations} onChange={(formations) => setPricing({ ...pricing, formations })} />
         <PricingListEditor title="Prestations techniques & créatives" rows={pricing.prestations} onChange={(prestations) => setPricing({ ...pricing, prestations })} priceMode="text" />
       </div>
+      </>)}
 
+      {section === "adminFormation" && (<>
       <div>
-        <H2>Formation — Vidéos, Guides & Liens (par personne)</H2>
+        <H2>Formation — Guide & Liens (par personne)</H2>
         <div style={{ color: C.muted, fontSize: 11.5, marginBottom: 10 }}>
-          Chaque personne ne voit que sa propre Formation avec son code personnel. Toi (code Administration) tu vois les 3.
+          Chaque personne ne voit que sa propre Formation, deverrouillee par son code personnel. Toute nouvelle recrue apparait ici automatiquement.
+          Format du guide : une ligne commencant par <b>## </b> devient un titre, une ligne commencant par <b>- </b> devient une puce.
         </div>
-        {Object.keys(GUIDE_LABELS).map(gid => (
-          <Card key={gid} style={{ marginBottom: 14 }}>
-            <div style={{ fontFamily: "Sora, sans-serif", fontWeight: 800, fontSize: 15, marginBottom: 10, color: C.goldLight }}>{GUIDE_LABELS[gid]}</div>
-
-            <Eyebrow>Vidéos</Eyebrow>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6, marginBottom: 8 }}>
-              {((formationVideos || {})[gid] || []).map(v => (
-                <div key={v.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: C.cardAlt, borderRadius: 8, padding: "6px 10px" }}>
-                  <span style={{ fontSize: 12.5 }}>{v.label}</span>
-                  <button onClick={() => removeVideo(gid, v.id)} style={{ background: "none", border: "none", color: C.rustLight, cursor: "pointer" }}><Trash2 size={14} /></button>
-                </div>
-              ))}
-            </div>
-            <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
-              <input placeholder="Titre de la vidéo" value={videoForm[gid]?.label || ""} onChange={e => setVideoForm({ ...videoForm, [gid]: { ...videoForm[gid], label: e.target.value } })} style={{ ...inputStyle, flex: 1 }} />
-              <input placeholder="Lien (YouTube, Drive…)" value={videoForm[gid]?.url || ""} onChange={e => setVideoForm({ ...videoForm, [gid]: { ...videoForm[gid], url: e.target.value } })} style={{ ...inputStyle, flex: 1 }} />
-              <button onClick={() => addVideo(gid)} style={{ ...iconBtn, padding: "0 12px" }}><Plus size={14} /></button>
+        {team.map(m => (
+          <Card key={m.id} style={{ marginBottom: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <div style={{ width: 10, height: 10, borderRadius: 999, background: m.color }} />
+              <div style={{ fontFamily: "Sora, sans-serif", fontWeight: 800, fontSize: 15, color: C.goldLight }}>{m.name}</div>
+              <div style={{ fontSize: 11, color: C.muted }}>· code {m.code}</div>
             </div>
 
             <Eyebrow>Guide (texte)</Eyebrow>
             <textarea
-              value={guidesForm[gid] || ""}
-              onChange={e => setGuidesForm({ ...guidesForm, [gid]: e.target.value })}
+              value={guidesForm[m.id] || ""}
+              onChange={e => setGuidesForm({ ...guidesForm, [m.id]: e.target.value })}
+              placeholder="Ecris ici le guide de cette personne…"
               style={{ ...inputStyle, marginTop: 6, marginBottom: 14, minHeight: 140, resize: "vertical", fontFamily: "monospace", fontSize: 12 }}
             />
 
             <Eyebrow>Liens</Eyebrow>
             <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6, marginBottom: 8 }}>
-              {((formationLiens || {})[gid] || []).map(l => (
+              {((formationLiens || {})[m.id] || []).map(l => (
                 <div key={l.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: C.cardAlt, borderRadius: 8, padding: "6px 10px" }}>
                   <span style={{ fontSize: 12.5 }}>{l.label}</span>
-                  <button onClick={() => removeLien(gid, l.id)} style={{ background: "none", border: "none", color: C.rustLight, cursor: "pointer" }}><Trash2 size={14} /></button>
+                  <button onClick={() => removeLien(m.id, l.id)} style={{ background: "none", border: "none", color: C.rustLight, cursor: "pointer" }}><Trash2 size={14} /></button>
                 </div>
               ))}
             </div>
             <div style={{ display: "flex", gap: 6 }}>
-              <input placeholder="Titre du lien" value={lienForm[gid]?.label || ""} onChange={e => setLienForm({ ...lienForm, [gid]: { ...lienForm[gid], label: e.target.value } })} style={{ ...inputStyle, flex: 1 }} />
-              <input placeholder="https://…" value={lienForm[gid]?.url || ""} onChange={e => setLienForm({ ...lienForm, [gid]: { ...lienForm[gid], url: e.target.value } })} style={{ ...inputStyle, flex: 1 }} />
-              <button onClick={() => addLien(gid)} style={{ ...iconBtn, padding: "0 12px" }}><Plus size={14} /></button>
+              <input placeholder="Titre du lien" value={lienForm[m.id]?.label || ""} onChange={e => setLienForm({ ...lienForm, [m.id]: { ...lienForm[m.id], label: e.target.value } })} style={{ ...inputStyle, flex: 1 }} />
+              <input placeholder="https://…" value={lienForm[m.id]?.url || ""} onChange={e => setLienForm({ ...lienForm, [m.id]: { ...lienForm[m.id], url: e.target.value } })} style={{ ...inputStyle, flex: 1 }} />
+              <button onClick={() => addLien(m.id)} style={{ ...iconBtn, padding: "0 12px" }}><Plus size={14} /></button>
             </div>
           </Card>
         ))}
-        <div style={{ color: C.muted, fontSize: 11.5, marginBottom: 6 }}>Les vidéos et liens s'enregistrent immédiatement. Pour le texte des guides, clique sur "Enregistrer les guides" ci-dessous une fois tes modifications faites.</div>
+        <div style={{ color: C.muted, fontSize: 11.5, marginBottom: 6 }}>Les liens s'enregistrent immediatement. Pour le texte des guides, clique sur "Enregistrer les guides" une fois tes modifications faites.</div>
         <button onClick={saveGuides} style={btnGold}><Save size={14} /> {guidesSaved ? "Enregistré ✓" : "Enregistrer les guides"}</button>
       </div>
+      </>)}
 
+      {section === "adminReset" && (<>
       <div>
         <H2>Zone dangereuse</H2>
         <Card style={{ borderColor: C.rust }}>
@@ -3132,6 +3126,7 @@ function TabAdministration({ team, setTeam, codes, setCodes, onResetAll, agency,
           {resetDone && <div style={{ fontSize: 12, color: C.greenLight, marginTop: 8 }}>✓ Données réinitialisées.</div>}
         </Card>
       </div>
+      </>)}
     </div>
   );
 }
