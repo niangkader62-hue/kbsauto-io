@@ -1,10 +1,10 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import {
   Target, Users, LayoutGrid, Sparkles, CalendarDays, MessageSquare,
-  Wallet, Link2, Plus, Trash2, ChevronDown, ChevronRight, ExternalLink,
+  Wallet, Link2, Plus, Trash2, ChevronDown, ChevronRight, ChevronLeft, ExternalLink,
   CheckCircle2, Circle, RotateCcw, TrendingUp, Banknote, Flame, GraduationCap,
   Award, TrendingDown, Lock, LogOut, CalendarClock, Send, History, FileText,
   Shield, UserPlus, AlertTriangle, Search, Copy, Radar, CalendarCheck,
@@ -47,6 +47,13 @@ const MASTER_CODE = "KBSAUTO2026";
 function codeMatches(input, expected) {
   const norm = (s) => (s || "").toString().trim().toUpperCase();
   return norm(input) === norm(expected) || norm(input) === MASTER_CODE;
+}
+// Comparaison stricte, SANS le code de secours : utilisee la ou le contenu doit
+// rester confidentiel entre membres (guides de Formation). Le filet de securite
+// reste disponible via Administration, ou tous les codes sont visibles.
+function codeMatchesStrict(input, expected) {
+  const norm = (s) => (s || "").toString().trim().toUpperCase();
+  return norm(input) !== "" && norm(input) === norm(expected);
 }
 
 /* ---------------------------------- NOTIFICATIONS PUSH ---------------------------------- */
@@ -852,6 +859,64 @@ function MiniUnlock({ code, label, onUnlock }) {
   );
 }
 
+/* Rangee horizontale defilante avec fleches cliquables.
+   Les fleches garantissent le defilement meme si le glissement tactile
+   ne fonctionne pas sur l'appareil. */
+function ScrollRow({ children, gap = 8, padding = "12px 12px 8px", bg }) {
+  const ref = useRef(null);
+  const [canLeft, setCanLeft] = useState(false);
+  const [canRight, setCanRight] = useState(false);
+
+  function update() {
+    const el = ref.current;
+    if (!el) return;
+    setCanLeft(el.scrollLeft > 4);
+    setCanRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  }
+
+  useEffect(() => {
+    update();
+    const el = ref.current;
+    if (!el) return;
+    el.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    const t = setTimeout(update, 120);
+    return () => {
+      el.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+      clearTimeout(t);
+    };
+  }, [children]);
+
+  function nudge(dir) {
+    const el = ref.current;
+    if (!el) return;
+    el.scrollBy({ left: dir * Math.max(140, el.clientWidth * 0.6), behavior: "smooth" });
+  }
+
+  const arrow = (side) => ({
+    position: "absolute", top: "50%", marginTop: -16, [side]: 4,
+    width: 32, height: 32, borderRadius: 999, cursor: "pointer",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    background: C.card, border: `1px solid ${C.gold}`, color: C.goldLight,
+    boxShadow: "0 2px 10px rgba(0,0,0,0.45)", zIndex: 3, padding: 0,
+  });
+
+  return (
+    <div style={{ position: "relative", background: bg || C.cardAlt }}>
+      <div ref={ref} className="kbs-navbar" style={{ display: "flex", gap, padding, overflowX: "auto", scrollSnapType: "x proximity" }}>
+        {children}
+      </div>
+      {canLeft && (
+        <button aria-label="Précédent" onClick={() => nudge(-1)} style={arrow("left")}><ChevronLeft size={18} /></button>
+      )}
+      {canRight && (
+        <button aria-label="Suivant" onClick={() => nudge(1)} style={arrow("right")}><ChevronRight size={18} /></button>
+      )}
+    </div>
+  );
+}
+
 function NotificationBanner() {
   const supported = typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window && typeof Notification !== "undefined";
   const [status, setStatus] = useState(supported ? Notification.permission : "unsupported");
@@ -1059,43 +1124,42 @@ export default function App() {
 
       <NotificationBanner />
 
-      {/* CATEGORY BAR — grille : toutes les categories visibles, aucune obligation de faire defiler */}
-      <div style={{ background: C.cardAlt, padding: "12px 12px 8px" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(66px, 1fr))", gap: 8 }}>
-          {CATEGORIES.map(c => {
-            const Icon = c.icon;
-            const active = category === c.id;
-            return (
-              <div key={c.id} onClick={() => selectCategory(c.id)} style={{
-                display: "flex", flexDirection: "column", alignItems: "center", gap: 6, cursor: "pointer",
-                padding: "2px 0"
+      {/* CATEGORY BAR — rangee defilante avec fleches cliquables */}
+      <ScrollRow gap={10} padding="12px 12px 8px">
+        {CATEGORIES.map(c => {
+          const Icon = c.icon;
+          const active = category === c.id;
+          return (
+            <div key={c.id} onClick={() => selectCategory(c.id)} style={{
+              display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
+              flexShrink: 0, width: 74, cursor: "pointer", scrollSnapAlign: "start",
+            }}>
+              <div style={{
+                width: 48, height: 48, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center",
+                background: active ? `linear-gradient(135deg, ${C.goldLight}, ${C.gold})` : C.card,
+                border: `1px solid ${active ? C.gold : C.border}`,
+                boxShadow: active ? `0 4px 14px rgba(192,138,62,0.45)` : "none",
+                transition: "all .18s ease",
               }}>
-                <div style={{
-                  width: 46, height: 46, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center",
-                  background: active ? `linear-gradient(135deg, ${C.goldLight}, ${C.gold})` : C.card,
-                  border: `1px solid ${active ? C.gold : C.border}`,
-                  boxShadow: active ? `0 4px 14px rgba(192,138,62,0.45)` : "none",
-                  transition: "all .18s ease",
-                }}>
-                  <Icon size={19} color={active ? "#1A1300" : C.muted} />
-                </div>
-                <span style={{ fontSize: 10.5, fontWeight: 700, textAlign: "center", lineHeight: 1.2, color: active ? C.goldLight : C.muted }}>{c.label}</span>
+                <Icon size={19} color={active ? "#1A1300" : C.muted} />
               </div>
-            );
-          })}
-        </div>
-      </div>
+              <span style={{ fontSize: 10.5, fontWeight: 700, textAlign: "center", lineHeight: 1.2, color: active ? C.goldLight : C.muted }}>{c.label}</span>
+            </div>
+          );
+        })}
+      </ScrollRow>
 
-      {/* SUB-TAB BAR — grille : tous les onglets de la categorie visibles d'un coup */}
-      <div style={{ background: C.cardAlt, borderBottom: `1px solid ${C.border}`, padding: "4px 12px 12px" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(74px, 1fr))", gap: 8 }}>
+      {/* SUB-TAB BAR — rangee defilante avec fleches cliquables */}
+      <div style={{ borderBottom: `1px solid ${C.border}` }}>
+        <ScrollRow gap={8} padding="4px 12px 12px">
           {CATEGORIES.find(c => c.id === category).tabs.map(tid => {
             const meta = TAB_META[tid];
             const Icon = meta.icon;
             const active = tab === tid;
             return (
               <div key={tid} onClick={() => setTab(tid)} style={{
-                display: "flex", flexDirection: "column", alignItems: "center", gap: 5, cursor: "pointer",
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 5,
+                flexShrink: 0, width: 82, cursor: "pointer", scrollSnapAlign: "start",
                 padding: "8px 4px", borderRadius: 12,
                 border: `1px solid ${active ? C.gold : C.border}`,
                 background: active ? "rgba(192,138,62,0.16)" : C.card,
@@ -1106,7 +1170,7 @@ export default function App() {
               </div>
             );
           })}
-        </div>
+        </ScrollRow>
       </div>
 
       <div className="kbs-content" style={{ padding: 16, maxWidth: 720, margin: "0 auto" }}>
@@ -2737,11 +2801,13 @@ function TabFormation({ team, codes, guides, formationLiens }) {
   const labels = Object.fromEntries(team.map(m => [m.id, m.name]));
 
   function tryUnlock() {
-    if (codeMatches(code, codes.admin)) {
+    // Comparaison stricte : le code de secours ne donne PAS acces aux guides des
+    // autres membres. Seul le code Administration ouvre tout (vue CEO).
+    if (codeMatchesStrict(code, codes.admin)) {
       setUnlockedId("admin"); setError(false); setCode(""); setViewing(team[0]?.id || null);
       return;
     }
-    const member = team.find(m => codeMatches(code, m.code));
+    const member = team.find(m => codeMatchesStrict(code, m.code));
     if (member) {
       setUnlockedId(member.id); setError(false); setCode(""); setViewing(member.id);
       return;
@@ -2755,7 +2821,7 @@ function TabFormation({ team, codes, guides, formationLiens }) {
         <H2>Formation</H2>
         <Card>
           <Eyebrow>Ton espace personnel</Eyebrow>
-          <div style={{ color: C.muted, fontSize: 12, margin: "6px 0 10px" }}>Entre ton code personnel pour voir ton guide et tes liens. Le CEO voit tout le monde avec le code Administration.</div>
+          <div style={{ color: C.muted, fontSize: 12, margin: "6px 0 10px" }}>Entre ton code personnel pour voir ton guide et tes liens — chaque guide est privé. Seul le code Administration ouvre ceux de toute l'équipe.</div>
           <div style={{ display: "flex", gap: 8 }}>
             <input type="password" placeholder="Ton code" value={code}
               onChange={e => { setCode(e.target.value); setError(false); }}
