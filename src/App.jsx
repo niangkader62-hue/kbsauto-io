@@ -8,7 +8,7 @@ import {
   CheckCircle2, Circle, RotateCcw, TrendingUp, Banknote, Flame, GraduationCap,
   Award, TrendingDown, Lock, LogOut, CalendarClock, Send, History, FileText,
   Shield, UserPlus, AlertTriangle, Search, Copy, Radar, CalendarCheck,
-  Pencil, Save, KeyRound, RefreshCw, X, MapPin, BookOpen, Bell
+  Pencil, Save, KeyRound, RefreshCw, X, MapPin, BookOpen, Bell, Eye, EyeOff
 } from "lucide-react";
 
 /* ---------------------------------- SUPABASE ---------------------------------- */
@@ -818,10 +818,17 @@ async function loadShared(key, fallback) {
     return data.value;
   } catch { return fallback; }
 }
+// Renvoie null si tout va bien, sinon un message d'erreur lisible.
+// Avant, les echecs etaient avales en silence : l'app affichait "Enregistre"
+// alors que rien n'etait ecrit dans la base.
 async function saveShared(key, value) {
   try {
-    await supabase.from("kbs_storage").upsert({ key, value, updated_at: new Date().toISOString() });
-  } catch { /* ignore */ }
+    const { error } = await supabase.from("kbs_storage").upsert({ key, value, updated_at: new Date().toISOString() });
+    if (error) return error.message || "Erreur d'enregistrement";
+    return null;
+  } catch (e) {
+    return (e && e.message) ? e.message : "Connexion impossible";
+  }
 }
 
 /* ---------------------------------- UI PRIMITIVES ---------------------------------- */
@@ -839,6 +846,32 @@ function H2({ children, style }) {
   return <h2 style={{ fontFamily: "Sora, sans-serif", fontSize: 20, fontWeight: 800, color: C.text, margin: "0 0 12px", ...style }}>{children}</h2>;
 }
 function fcfa(n) { return `${Number(n || 0).toLocaleString("fr-FR")} FCFA`; }
+
+/* Champ de code masque par defaut (points), revelable via l'icone oeil. */
+function CodeInput({ value, onChange, placeholder, style }) {
+  const [shown, setShown] = useState(false);
+  return (
+    <div style={{ position: "relative", ...style }}>
+      <input
+        type={shown ? "text" : "password"}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        style={{ ...inputStyle, paddingRight: 40, fontWeight: 700, letterSpacing: shown ? 0.5 : 2 }} />
+      <button
+        type="button"
+        aria-label={shown ? "Masquer le code" : "Afficher le code"}
+        onClick={(e) => { e.preventDefault(); setShown(s => !s); }}
+        style={{
+          position: "absolute", right: 5, top: "50%", marginTop: -13, width: 28, height: 26,
+          background: "none", border: "none", color: shown ? C.goldLight : C.muted, cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
+        }}>
+        {shown ? <EyeOff size={15} /> : <Eye size={15} />}
+      </button>
+    </div>
+  );
+}
 
 function MiniUnlock({ code, label, onUnlock, strict }) {
   const [input, setInput] = useState("");
@@ -1012,22 +1045,31 @@ export default function App() {
     })();
   }, []);
 
-  useEffect(() => { if (loaded) saveShared("kbs:team", team); }, [team, loaded]);
-  useEffect(() => { if (loaded) saveShared("kbs:goal", goal); }, [goal, loaded]);
-  useEffect(() => { if (loaded) saveShared("kbs:prospects", prospects); }, [prospects, loaded]);
-  useEffect(() => { if (loaded) saveShared("kbs:kanban", kanban); }, [kanban, loaded]);
-  useEffect(() => { if (loaded) saveShared("kbs:checks", checks); }, [checks, loaded]);
-  useEffect(() => { if (loaded) saveShared("kbs:links", links); }, [links, loaded]);
-  useEffect(() => { if (loaded) saveShared("kbs:expenses", expenses); }, [expenses, loaded]);
-  useEffect(() => { if (loaded) saveShared("kbs:dettes", dettes); }, [dettes, loaded]);
-  useEffect(() => { if (loaded) saveShared("kbs:prospection", prospection); }, [prospection, loaded]);
-  useEffect(() => { if (loaded) saveShared("kbs:dispos", dispos); }, [dispos, loaded]);
-  useEffect(() => { if (loaded) saveShared("kbs:codes", codes); }, [codes, loaded]);
-  useEffect(() => { if (loaded) saveShared("kbs:agency", agency); }, [agency, loaded]);
-  useEffect(() => { if (loaded) saveShared("kbs:devis", devis); }, [devis, loaded]);
-  useEffect(() => { if (loaded) saveShared("kbs:guides", guides); }, [guides, loaded]);
-  useEffect(() => { if (loaded) saveShared("kbs:formationLiens", formationLiens); }, [formationLiens, loaded]);
-  useEffect(() => { if (loaded) saveShared("kbs:pricing", pricing); }, [pricing, loaded]);
+  // Enregistrement centralise : toute panne d'ecriture devient visible a l'ecran
+  // au lieu d'etre ignoree en silence.
+  const [saveError, setSaveError] = useState("");
+  async function persist(key, value) {
+    const err = await saveShared(key, value);
+    setSaveError(err ? err : "");
+    return err;
+  }
+
+  useEffect(() => { if (loaded) persist("kbs:team", team); }, [team, loaded]);
+  useEffect(() => { if (loaded) persist("kbs:goal", goal); }, [goal, loaded]);
+  useEffect(() => { if (loaded) persist("kbs:prospects", prospects); }, [prospects, loaded]);
+  useEffect(() => { if (loaded) persist("kbs:kanban", kanban); }, [kanban, loaded]);
+  useEffect(() => { if (loaded) persist("kbs:checks", checks); }, [checks, loaded]);
+  useEffect(() => { if (loaded) persist("kbs:links", links); }, [links, loaded]);
+  useEffect(() => { if (loaded) persist("kbs:expenses", expenses); }, [expenses, loaded]);
+  useEffect(() => { if (loaded) persist("kbs:dettes", dettes); }, [dettes, loaded]);
+  useEffect(() => { if (loaded) persist("kbs:prospection", prospection); }, [prospection, loaded]);
+  useEffect(() => { if (loaded) persist("kbs:dispos", dispos); }, [dispos, loaded]);
+  useEffect(() => { if (loaded) persist("kbs:codes", codes); }, [codes, loaded]);
+  useEffect(() => { if (loaded) persist("kbs:agency", agency); }, [agency, loaded]);
+  useEffect(() => { if (loaded) persist("kbs:devis", devis); }, [devis, loaded]);
+  useEffect(() => { if (loaded) persist("kbs:guides", guides); }, [guides, loaded]);
+  useEffect(() => { if (loaded) persist("kbs:formationLiens", formationLiens); }, [formationLiens, loaded]);
+  useEffect(() => { if (loaded) persist("kbs:pricing", pricing); }, [pricing, loaded]);
 
   const totalCA = useMemo(() => prospects.reduce((s, p) => s + (Number(p.montant) || 0), 0), [prospects]);
   const servicesCatalogue = useMemo(() => buildServicesCatalogue(pricing), [pricing]);
@@ -1126,6 +1168,16 @@ export default function App() {
       </div>
 
       <NotificationBanner />
+
+      {saveError && (
+        <div style={{ background: "rgba(183,64,47,0.18)", borderBottom: `1px solid ${C.rust}`, padding: "10px 16px", display: "flex", alignItems: "center", gap: 8 }}>
+          <AlertTriangle size={15} color={C.rustLight} />
+          <div style={{ fontSize: 12, color: C.rustLight, flex: 1 }}>
+            Enregistrement échoué — tes modifications ne sont pas sauvegardées. ({saveError})
+          </div>
+          <button onClick={() => setSaveError("")} style={{ background: "none", border: "none", color: C.rustLight, cursor: "pointer" }}><X size={14} /></button>
+        </div>
+      )}
 
       {/* CATEGORY BAR — rangee defilante avec fleches cliquables */}
       <ScrollRow gap={10} padding="12px 12px 8px">
@@ -2941,18 +2993,25 @@ function TabAdministration({ section, team, setTeam, codes, setCodes, onResetAll
     setTeam(team.map(m => m.id === id ? { ...m, name: editForm.name || m.name, role: editForm.role, code: editForm.code || m.code, checklist } : m));
     setEditingId(null);
   }
-  function saveCodes() {
+  async function saveCodes() {
     setCodes(codesForm);
+    // On attend la vraie ecriture en base avant d'annoncer un succes.
+    const err = await saveShared("kbs:codes", codesForm);
+    if (err) { setCodesSaved(false); return; }
     setCodesSaved(true);
     setTimeout(() => setCodesSaved(false), 2000);
   }
-  function saveAgency() {
+  async function saveAgency() {
     setAgency(agencyForm);
+    const err = await saveShared("kbs:agency", agencyForm);
+    if (err) { setAgencySaved(false); return; }
     setAgencySaved(true);
     setTimeout(() => setAgencySaved(false), 2000);
   }
-  function saveGuides() {
+  async function saveGuides() {
     setGuides(guidesForm);
+    const err = await saveShared("kbs:guides", guidesForm);
+    if (err) { setGuidesSaved(false); return; }
     setGuidesSaved(true);
     setTimeout(() => setGuidesSaved(false), 2000);
   }
@@ -3018,7 +3077,7 @@ function TabAdministration({ section, team, setTeam, codes, setCodes, onResetAll
                     <textarea placeholder="Checklist quotidienne (séparée par des virgules)" value={editForm.checklistText} onChange={e => setEditForm({ ...editForm, checklistText: e.target.value })} style={{ ...inputStyle, minHeight: 60, resize: "vertical" }} />
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                       <KeyRound size={14} color={C.muted} />
-                      <input placeholder="Code personnel (checklist)" value={editForm.code} onChange={e => setEditForm({ ...editForm, code: e.target.value.toUpperCase() })} style={{ ...inputStyle, flex: 1 }} />
+                      <CodeInput placeholder="Code personnel (checklist)" value={editForm.code} onChange={e => setEditForm({ ...editForm, code: e.target.value.toUpperCase() })} style={{ flex: 1 }} />
                     </div>
                     <button onClick={() => saveEdit(m.id)} style={btnGold}><Save size={14} /> Enregistrer</button>
                   </div>
@@ -3056,22 +3115,22 @@ function TabAdministration({ section, team, setTeam, codes, setCodes, onResetAll
         <Card>
           <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 12.5 }}>
             <label style={{ color: C.muted }}>Mot de passe général de l'outil
-              <input value={codesForm.app} onChange={e => setCodesForm({ ...codesForm, app: e.target.value.toUpperCase() })} style={{ ...inputStyle, marginTop: 4 }} />
+              <CodeInput value={codesForm.app} onChange={e => setCodesForm({ ...codesForm, app: e.target.value.toUpperCase() })} style={{ marginTop: 4 }} />
             </label>
             <label style={{ color: C.muted }}>Objectif (modifier le montant cible)
-              <input value={codesForm.ceo} onChange={e => setCodesForm({ ...codesForm, ceo: e.target.value.toUpperCase() })} style={{ ...inputStyle, marginTop: 4 }} />
+              <CodeInput value={codesForm.ceo} onChange={e => setCodesForm({ ...codesForm, ceo: e.target.value.toUpperCase() })} style={{ marginTop: 4 }} />
             </label>
             <label style={{ color: C.muted }}>CRM & Trésorerie (Catherine)
-              <input value={codesForm.catherine} onChange={e => setCodesForm({ ...codesForm, catherine: e.target.value.toUpperCase() })} style={{ ...inputStyle, marginTop: 4 }} />
+              <CodeInput value={codesForm.catherine} onChange={e => setCodesForm({ ...codesForm, catherine: e.target.value.toUpperCase() })} style={{ marginTop: 4 }} />
             </label>
             <label style={{ color: C.muted }}>Ressources (Boîte à outils, Académie, Plan 30j, Liens, Formation)
-              <input value={codesForm.ressources} onChange={e => setCodesForm({ ...codesForm, ressources: e.target.value.toUpperCase() })} style={{ ...inputStyle, marginTop: 4 }} />
+              <CodeInput value={codesForm.ressources} onChange={e => setCodesForm({ ...codesForm, ressources: e.target.value.toUpperCase() })} style={{ marginTop: 4 }} />
             </label>
             <label style={{ color: C.muted }}>Administration (cette section)
-              <input value={codesForm.admin} onChange={e => setCodesForm({ ...codesForm, admin: e.target.value.toUpperCase() })} style={{ ...inputStyle, marginTop: 4 }} />
+              <CodeInput value={codesForm.admin} onChange={e => setCodesForm({ ...codesForm, admin: e.target.value.toUpperCase() })} style={{ marginTop: 4 }} />
             </label>
             <label style={{ color: C.muted }}>Réinitialisation totale (zone dangereuse — garde-le pour toi seul)
-              <input value={codesForm.reset} onChange={e => setCodesForm({ ...codesForm, reset: e.target.value.toUpperCase() })} style={{ ...inputStyle, marginTop: 4 }} />
+              <CodeInput value={codesForm.reset} onChange={e => setCodesForm({ ...codesForm, reset: e.target.value.toUpperCase() })} style={{ marginTop: 4 }} />
             </label>
           </div>
           <button onClick={saveCodes} style={{ ...btnGold, marginTop: 10 }}><Save size={14} /> {codesSaved ? "Enregistré ✓" : "Enregistrer les codes"}</button>
@@ -3092,11 +3151,11 @@ function TabAdministration({ section, team, setTeam, codes, setCodes, onResetAll
                   <div style={{ fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.name}</div>
                   <div style={{ fontSize: 10.5, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.role}</div>
                 </div>
-                <input
+                <CodeInput
                   value={m.code || ""}
                   onChange={e => setTeam(team.map(x => x.id === m.id ? { ...x, code: e.target.value.toUpperCase() } : x))}
                   placeholder="CODE2026"
-                  style={{ ...inputStyle, flex: "1 1 120px", fontWeight: 700, letterSpacing: 0.5 }} />
+                  style={{ flex: "1 1 130px" }} />
               </div>
             ))}
           </div>
