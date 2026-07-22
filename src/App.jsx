@@ -828,8 +828,8 @@ function Card({ children, style }) {
 function Eyebrow({ children }) {
   return <div style={{ color: C.gold, fontSize: 11, letterSpacing: 1.5, fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>{children}</div>;
 }
-function H2({ children }) {
-  return <h2 style={{ fontFamily: "Sora, sans-serif", fontSize: 20, fontWeight: 800, color: C.text, margin: "0 0 12px" }}>{children}</h2>;
+function H2({ children, style }) {
+  return <h2 style={{ fontFamily: "Sora, sans-serif", fontSize: 20, fontWeight: 800, color: C.text, margin: "0 0 12px", ...style }}>{children}</h2>;
 }
 function fcfa(n) { return `${Number(n || 0).toLocaleString("fr-FR")} FCFA`; }
 
@@ -1059,60 +1059,54 @@ export default function App() {
 
       <NotificationBanner />
 
-      {/* CATEGORY BAR — cartes défilantes horizontalement */}
-      <div style={{ position: "relative", background: C.cardAlt }}>
-        <div className="kbs-navbar" style={{ display: "flex", overflowX: "auto", gap: 10, padding: "12px 14px 8px", scrollSnapType: "x proximity" }}>
+      {/* CATEGORY BAR — grille : toutes les categories visibles, aucune obligation de faire defiler */}
+      <div style={{ background: C.cardAlt, padding: "12px 12px 8px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(66px, 1fr))", gap: 8 }}>
           {CATEGORIES.map(c => {
             const Icon = c.icon;
             const active = category === c.id;
             return (
               <div key={c.id} onClick={() => selectCategory(c.id)} style={{
-                display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
-                flexShrink: 0, width: 74, cursor: "pointer", scrollSnapAlign: "start"
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 6, cursor: "pointer",
+                padding: "2px 0"
               }}>
                 <div style={{
-                  width: 48, height: 48, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center",
+                  width: 46, height: 46, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center",
                   background: active ? `linear-gradient(135deg, ${C.goldLight}, ${C.gold})` : C.card,
                   border: `1px solid ${active ? C.gold : C.border}`,
                   boxShadow: active ? `0 4px 14px rgba(192,138,62,0.45)` : "none",
+                  transition: "all .18s ease",
                 }}>
                   <Icon size={19} color={active ? "#1A1300" : C.muted} />
                 </div>
-                <span style={{ fontSize: 11, fontWeight: 700, textAlign: "center", lineHeight: 1.2, color: active ? C.goldLight : C.muted }}>{c.label}</span>
+                <span style={{ fontSize: 10.5, fontWeight: 700, textAlign: "center", lineHeight: 1.2, color: active ? C.goldLight : C.muted }}>{c.label}</span>
               </div>
             );
           })}
         </div>
-        <div style={{ position: "absolute", top: 0, bottom: 0, right: 0, width: 22, background: `linear-gradient(270deg, ${C.cardAlt}, transparent)`, pointerEvents: "none" }} />
       </div>
 
-      {/* SUB-TAB BAR — cartes défilantes plus petites */}
-      <div style={{ position: "relative", background: C.cardAlt, borderBottom: `1px solid ${C.border}` }}>
-        <div className="kbs-navbar" style={{ display: "flex", overflowX: "auto", gap: 8, padding: "4px 14px 10px", scrollSnapType: "x proximity" }}>
+      {/* SUB-TAB BAR — grille : tous les onglets de la categorie visibles d'un coup */}
+      <div style={{ background: C.cardAlt, borderBottom: `1px solid ${C.border}`, padding: "4px 12px 12px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(74px, 1fr))", gap: 8 }}>
           {CATEGORIES.find(c => c.id === category).tabs.map(tid => {
             const meta = TAB_META[tid];
             const Icon = meta.icon;
             const active = tab === tid;
             return (
               <div key={tid} onClick={() => setTab(tid)} style={{
-                display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap",
-                padding: "8px 13px", borderRadius: 12, fontSize: 12.5, fontWeight: 700,
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 5, cursor: "pointer",
+                padding: "8px 4px", borderRadius: 12,
                 border: `1px solid ${active ? C.gold : C.border}`,
                 background: active ? "rgba(192,138,62,0.16)" : C.card,
-                color: active ? C.goldLight : C.muted, flexShrink: 0, cursor: "pointer",
-                scrollSnapAlign: "start"
+                transition: "all .18s ease",
               }}>
-                <Icon size={13} /> {meta.label}
+                <Icon size={16} color={active ? C.goldLight : C.muted} />
+                <span style={{ fontSize: 10, fontWeight: 700, textAlign: "center", lineHeight: 1.25, color: active ? C.goldLight : C.muted }}>{meta.label}</span>
               </div>
             );
           })}
         </div>
-        <div style={{ position: "absolute", top: 0, bottom: 0, right: 0, width: 30, background: `linear-gradient(270deg, ${C.cardAlt} 40%, transparent)`, pointerEvents: "none" }} />
-        {CATEGORIES.find(c => c.id === category).tabs.length > 2 && (
-          <div className="kbs-hint" style={{ position: "absolute", right: 6, top: "50%", marginTop: -9, pointerEvents: "none", color: C.goldLight, display: "flex", alignItems: "center" }}>
-            <ChevronRight size={18} />
-          </div>
-        )}
       </div>
 
       <div className="kbs-content" style={{ padding: 16, maxWidth: 720, margin: "0 auto" }}>
@@ -3011,7 +3005,34 @@ function TabAdministration({ section, team, setTeam, codes, setCodes, onResetAll
             </label>
           </div>
           <button onClick={saveCodes} style={{ ...btnGold, marginTop: 10 }}><Save size={14} /> {codesSaved ? "Enregistré ✓" : "Enregistrer les codes"}</button>
-          <div style={{ color: C.muted, fontSize: 11, marginTop: 10 }}>Chaque code est indépendant : connaître l'un ne donne accès à aucun autre. Les codes personnels de checklist se modifient individuellement ci-dessus, dans la fiche de chaque membre.</div>
+          <div style={{ color: C.muted, fontSize: 11, marginTop: 10 }}>Chaque code est indépendant : connaître l'un ne donne accès à aucun autre.</div>
+        </Card>
+
+        <H2 style={{ marginTop: 18 }}>Codes personnels de l'équipe</H2>
+        <Card>
+          <Eyebrow>Un code par personne — checklist Kanban + sa Formation</Eyebrow>
+          <div style={{ color: C.muted, fontSize: 11.5, margin: "6px 0 12px" }}>
+            Modifie ici le code de n'importe quel membre, y compris une nouvelle recrue. L'enregistrement est immédiat.
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {team.map(m => (
+              <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 10, height: 10, borderRadius: 999, background: m.color, flexShrink: 0 }} />
+                <div style={{ flex: "1 1 90px", minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.name}</div>
+                  <div style={{ fontSize: 10.5, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.role}</div>
+                </div>
+                <input
+                  value={m.code || ""}
+                  onChange={e => setTeam(team.map(x => x.id === m.id ? { ...x, code: e.target.value.toUpperCase() } : x))}
+                  placeholder="CODE2026"
+                  style={{ ...inputStyle, flex: "1 1 120px", fontWeight: 700, letterSpacing: 0.5 }} />
+              </div>
+            ))}
+          </div>
+          <div style={{ color: C.muted, fontSize: 11, marginTop: 12 }}>
+            Pour créer un nouveau membre (et donc un nouveau code), va dans l'onglet <b>Équipe</b> → "Recruter un nouveau membre".
+          </div>
         </Card>
       </div>
       </>)}
