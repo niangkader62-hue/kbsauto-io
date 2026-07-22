@@ -840,10 +840,13 @@ function H2({ children, style }) {
 }
 function fcfa(n) { return `${Number(n || 0).toLocaleString("fr-FR")} FCFA`; }
 
-function MiniUnlock({ code, label, onUnlock }) {
+function MiniUnlock({ code, label, onUnlock, strict }) {
   const [input, setInput] = useState("");
   const [error, setError] = useState(false);
-  function tryUnlock() { if (codeMatches(input, code)) onUnlock(); else setError(true); }
+  function tryUnlock() {
+    const ok = strict ? codeMatchesStrict(input, code) : codeMatches(input, code);
+    if (ok) onUnlock(); else setError(true);
+  }
   return (
     <div style={{ marginTop: 10, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
       <div style={{ fontSize: 11, color: C.muted, display: "flex", alignItems: "center", gap: 4 }}><Lock size={11} /> {label}</div>
@@ -1613,7 +1616,8 @@ function TabKanban({ kanban, setKanban, checks, setChecks, team, codes }) {
   }
   function tryUnlockMine() {
     const member = team.find(m => m.id === whoPicker);
-    if (member && codeMatches(unlockCode, member.code)) { setMyUnlock(member.id); setUnlockError(false); setUnlockCode(""); }
+    // Strict : le code de secours n'ouvre pas la checklist d'un autre membre.
+    if (member && codeMatchesStrict(unlockCode, member.code)) { setMyUnlock(member.id); setUnlockError(false); setUnlockCode(""); }
     else setUnlockError(true);
   }
 
@@ -1671,7 +1675,7 @@ function TabKanban({ kanban, setKanban, checks, setChecks, team, codes }) {
             {unlockError && <div style={{ color: C.rustLight, fontSize: 11, marginTop: 6 }}>Code incorrect.</div>}
             {myUnlock && <div style={{ color: C.greenLight, fontSize: 11, marginTop: 6 }}>✓ {team.find(m => m.id === myUnlock)?.name} peut cocher sa checklist.</div>}
             <div style={{ marginTop: 8 }}>
-              <MiniUnlock code={codes.admin} label="Ou code Administration (CEO — tout déverrouiller)" onUnlock={() => setAdminUnlocked(true)} />
+              <MiniUnlock strict code={codes.admin} label="Ou code Administration (CEO — tout déverrouiller)" onUnlock={() => setAdminUnlocked(true)} />
             </div>
           </Card>
         )}
