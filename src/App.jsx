@@ -19,9 +19,9 @@ const supabase = createClient(
 
 /* ---------------------------------- PALETTE ---------------------------------- */
 const C = {
-  bg: "#141316", card: "#1F1D21", cardAlt: "#252226", border: "#38343A",
-  gold: "#C08A3E", goldLight: "#E0AC5F", green: "#1F7A4D", greenLight: "#3CBE7C",
-  rust: "#B7402F", rustLight: "#DD6A54", text: "#F3EFE8", muted: "#9C9690",
+  bg: "var(--c-bg)", card: "var(--c-card)", cardAlt: "var(--c-cardAlt)", border: "var(--c-border)",
+  gold: "var(--c-gold)", goldLight: "var(--c-goldLight)", green: "var(--c-green)", greenLight: "var(--c-greenLight)",
+  rust: "var(--c-rust)", rustLight: "var(--c-rustLight)", text: "var(--c-text)", muted: "var(--c-muted)",
   white: "#FFFFFF", black: "#0D0D0D",
 };
 
@@ -29,7 +29,20 @@ const FONT_IMPORT = `@import url('https://fonts.googleapis.com/css2?family=Sora:
 .kbs-navbar::-webkit-scrollbar { height: 0; display: none; }
 .kbs-navbar { scrollbar-width: none; -ms-overflow-style: none; }
 @keyframes kbsSwipeHint { 0%, 100% { opacity: .45; transform: translateX(0); } 50% { opacity: 1; transform: translateX(4px); } }
-.kbs-hint { animation: kbsSwipeHint 1.9s ease-in-out infinite; }`;
+.kbs-hint { animation: kbsSwipeHint 1.9s ease-in-out infinite; }
+:root{
+  --c-bg:#F6F2EB;--c-card:#FFFFFF;--c-cardAlt:#F1EBE1;--c-border:rgba(23,21,20,0.10);
+  --c-gold:#C15F3C;--c-goldLight:#D2734A;--c-green:#2E8B6F;--c-greenLight:#2E8B6F;
+  --c-rust:#C0392B;--c-rustLight:#C0392B;--c-text:#171514;--c-muted:#6E665E;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --c-bg:#141210;--c-card:#211D18;--c-cardAlt:#2A241E;--c-border:rgba(242,237,228,0.12);
+    --c-gold:#D6764A;--c-goldLight:#E48D5F;--c-green:#3CBE7C;--c-greenLight:#57C99A;
+    --c-rust:#E5765B;--c-rustLight:#E5765B;--c-text:#F2EDE4;--c-muted:#9A9187;
+  }
+}
+body{ background:var(--c-bg); }`;
 
 /* Codes d'accès par défaut — modifiables ensuite directement dans l'onglet Administration */
 const DEFAULT_CODES = {
@@ -985,7 +998,7 @@ function NotificationBanner() {
   if (!supported || status === "granted") return null;
 
   return (
-    <div style={{ background: "rgba(192,138,62,0.14)", borderBottom: `1px solid ${C.border}`, padding: "10px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+    <div style={{ background: "rgba(193,95,60,0.14)", borderBottom: `1px solid ${C.border}`, padding: "10px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
       <div style={{ fontSize: 12.5, color: C.text, display: "flex", alignItems: "center", gap: 6 }}><Bell size={14} color={C.goldLight} /> Active les notifications pour être averti en temps réel de ce qui se passe dans l'équipe.</div>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <button onClick={enable} disabled={busy} style={{ ...btnGold, width: "auto", padding: "7px 14px", fontSize: 12 }}>{busy ? "..." : "Activer"}</button>
@@ -1193,10 +1206,10 @@ export default function App() {
                 width: 48, height: 48, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center",
                 background: active ? `linear-gradient(135deg, ${C.goldLight}, ${C.gold})` : C.card,
                 border: `1px solid ${active ? C.gold : C.border}`,
-                boxShadow: active ? `0 4px 14px rgba(192,138,62,0.45)` : "none",
+                boxShadow: active ? `0 4px 14px rgba(193,95,60,0.45)` : "none",
                 transition: "all .18s ease",
               }}>
-                <Icon size={19} color={active ? "#1A1300" : C.muted} />
+                <Icon size={19} color={active ? "#FFFFFF" : C.muted} />
               </div>
               <span style={{ fontSize: 10.5, fontWeight: 700, textAlign: "center", lineHeight: 1.2, color: active ? C.goldLight : C.muted }}>{c.label}</span>
             </div>
@@ -1217,7 +1230,7 @@ export default function App() {
                 flexShrink: 0, width: 82, cursor: "pointer", scrollSnapAlign: "start",
                 padding: "8px 4px", borderRadius: 12,
                 border: `1px solid ${active ? C.gold : C.border}`,
-                background: active ? "rgba(192,138,62,0.16)" : C.card,
+                background: active ? "rgba(193,95,60,0.16)" : C.card,
                 transition: "all .18s ease",
               }}>
                 <Icon size={16} color={active ? C.goldLight : C.muted} />
@@ -1843,7 +1856,7 @@ function TabDispos({ dispos, setDispos, team }) {
                 display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap",
                 padding: "6px 10px", borderRadius: 999, fontSize: 12, fontWeight: 700,
                 border: `1px solid ${active ? m.color : C.border}`,
-                background: active ? "rgba(192,138,62,0.12)" : "transparent",
+                background: active ? "rgba(193,95,60,0.12)" : "transparent",
                 color: active ? m.color : C.muted, cursor: "pointer", flexShrink: 0
               }}>{m.name}{m.id === whoAmI ? " (toi)" : ""}</button>
             );
@@ -2923,7 +2936,7 @@ function TabFormation({ team, codes, guides, formationLiens }) {
             <button key={gid} onClick={() => setViewing(gid)} style={{
               padding: "6px 12px", borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: "pointer", flexShrink: 0,
               border: `1px solid ${activeId === gid ? C.gold : C.border}`,
-              background: activeId === gid ? "rgba(192,138,62,0.16)" : "transparent",
+              background: activeId === gid ? "rgba(193,95,60,0.16)" : "transparent",
               color: activeId === gid ? C.goldLight : C.muted,
             }}>{labels[gid]}</button>
           ))}
@@ -2937,7 +2950,7 @@ function TabFormation({ team, codes, guides, formationLiens }) {
           <button key={s.id} onClick={() => setSection(s.id)} style={{
             flex: 1, padding: "8px 10px", borderRadius: 10, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
             border: `1px solid ${section === s.id ? C.gold : C.border}`,
-            background: section === s.id ? "rgba(192,138,62,0.16)" : "transparent",
+            background: section === s.id ? "rgba(193,95,60,0.16)" : "transparent",
             color: section === s.id ? C.goldLight : C.muted,
           }}>{s.label}</button>
         ))}
@@ -3298,5 +3311,5 @@ function TabAdministration({ section, team, setTeam, codes, setCodes, onResetAll
 
 /* ---------------------------------- SHARED STYLES ---------------------------------- */
 const inputStyle = { background: C.cardAlt, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, padding: "9px 10px", fontSize: 13, width: "100%" };
-const btnGold = { display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: C.gold, color: "#1A1300", border: "none", borderRadius: 8, padding: "10px", fontWeight: 700, fontSize: 13, cursor: "pointer" };
+const btnGold = { display: "flex", alignItems: "center", justifyContent: "center", gap: 6, background: C.gold, color: "#FFFFFF", border: "none", borderRadius: 8, padding: "10px", fontWeight: 700, fontSize: 13, cursor: "pointer" };
 const iconBtn = { background: "none", border: `1px solid ${C.border}`, borderRadius: 6, color: C.muted, padding: "3px 6px", fontSize: 11, cursor: "pointer" };
