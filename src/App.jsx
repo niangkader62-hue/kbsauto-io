@@ -1630,6 +1630,7 @@ function TabDevis({ devis, setDevis, prospects, team, agency }) {
 /* ---------------------------------- TAB: KANBAN ---------------------------------- */
 function TabKanban({ kanban, setKanban, checks, setChecks, team, codes }) {
   const [newTask, setNewTask] = useState("");
+  const [taskAssignee, setTaskAssignee] = useState(team[0]?.id || "");
   const [myUnlock, setMyUnlock] = useState(null);
   const [adminUnlocked, setAdminUnlocked] = useState(false);
   const [whoPicker, setWhoPicker] = useState(team[0]?.id || "");
@@ -1641,7 +1642,7 @@ function TabKanban({ kanban, setKanban, checks, setChecks, team, codes }) {
   ];
   function addTask() {
     if (!newTask.trim()) return;
-    setKanban({ ...kanban, todo: [...kanban.todo, { id: Date.now(), text: newTask }] });
+    setKanban({ ...kanban, todo: [...kanban.todo, { id: Date.now(), text: newTask, assignedTo: taskAssignee }] });
     setNewTask("");
   }
   function move(colId, taskId, dir) {
@@ -1656,6 +1657,8 @@ function TabKanban({ kanban, setKanban, checks, setChecks, team, codes }) {
     setKanban({ ...kanban, [colId]: kanban[colId].filter(t => t.id !== taskId) });
   }
   function canEdit(personId) { return adminUnlocked || myUnlock === personId; }
+  // Une tâche sans responsable (ancienne tâche) reste modifiable par tout le monde.
+  function canEditTask(t) { return !t.assignedTo || canEdit(t.assignedTo); }
   function toggleCheck(person, idx) {
     if (!canEdit(person)) return;
     const list = checks[person] || [];
@@ -1668,7 +1671,7 @@ function TabKanban({ kanban, setKanban, checks, setChecks, team, codes }) {
   }
   function tryUnlockMine() {
     const member = team.find(m => m.id === whoPicker);
-    // Strict : le code de secours n'ouvre pas la checklist d'un autre membre.
+    // Strict : le code de secours n'ouvre pas les tâches/checklist d'un autre membre.
     if (member && codeMatchesStrict(unlockCode, member.code)) { setMyUnlock(member.id); setUnlockError(false); setUnlockCode(""); }
     else setUnlockError(true);
   }
@@ -1677,29 +1680,70 @@ function TabKanban({ kanban, setKanban, checks, setChecks, team, codes }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       <Card>
         <Eyebrow>Nouvelle tâche</Eyebrow>
-        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-          <input placeholder="Décrire la tâche…" value={newTask} onChange={e => setNewTask(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
-          <button onClick={addTask} style={{ ...btnGold, width: "auto", padding: "0 14px" }}><Plus size={16} /></button>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+          <input placeholder="Décrire la tâche…" value={newTask} onChange={e => setNewTask(e.target.value)} style={{ ...inputStyle, flex: "1 1 100%" }} />
+          <select value={taskAssignee} onChange={e => setTaskAssignee(e.target.value)} style={{ ...inputStyle, flex: 1 }}>
+            {team.map(m => <option key={m.id} value={m.id}>Pour : {m.name}</option>)}
+          </select>
+          <button onClick={addTask} style={{ ...btnGold, width: "auto", padding: "0 16px" }}><Plus size={16} /></button>
         </div>
       </Card>
 
+      {!adminUnlocked ? (
+        <Card>
+          <Eyebrow>Déverrouiller mes tâches &amp; ma checklist</Eyebrow>
+          <div style={{ color: C.muted, fontSize: 12, marginTop: 6, marginBottom: 8 }}>Entre ton code personnel pour déplacer les tâches qui te sont assignées et cocher ta checklist.</div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <select value={whoPicker} onChange={e => { setWhoPicker(e.target.value); setUnlockError(false); }} style={{ ...inputStyle, flex: "1 1 120px" }}>
+              {team.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+            <input type="password" placeholder="Ton code" value={unlockCode}
+              onChange={e => { setUnlockCode(e.target.value); setUnlockError(false); }}
+              onKeyDown={e => { if (e.key === "Enter") tryUnlockMine(); }}
+              style={{ ...inputStyle, flex: "1 1 100px" }} />
+            <button onClick={tryUnlockMine} style={{ ...iconBtn, padding: "0 14px" }}>OK</button>
+          </div>
+          {unlockError && <div style={{ color: C.rustLight, fontSize: 11, marginTop: 6 }}>Code incorrect.</div>}
+          {myUnlock && <div style={{ color: C.greenLight, fontSize: 11, marginTop: 6 }}>✓ {team.find(m => m.id === myUnlock)?.name} peut gérer ses tâches et sa checklist.</div>}
+          <div style={{ marginTop: 8 }}>
+            <MiniUnlock strict code={codes.admin} label="Ou code Administration (CEO — tout déverrouiller)" onUnlock={() => setAdminUnlocked(true)} />
+          </div>
+        </Card>
+      ) : (
+        <div style={{ color: C.greenLight, fontSize: 12 }}>✓ Mode Administration : toutes les tâches et checklists sont modifiables.</div>
+      )}
+
       <div>
         <H2>Tableau Kanban</H2>
+        <div style={{ color: C.muted, fontSize: 12, marginBottom: 8 }}>Chaque tâche ne peut être déplacée ou supprimée que par la personne à qui elle est assignée (ou le CEO).</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {cols.map((col, colIdx) => (
             <Card key={col.id}>
               <Eyebrow>{col.label} ({kanban[col.id]?.length || 0})</Eyebrow>
               <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
-                {(kanban[col.id] || []).map(t => (
-                  <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: C.cardAlt, borderRadius: 8, padding: "8px 10px" }}>
-                    <span style={{ fontSize: 13 }}>{t.text}</span>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      {colIdx > 0 && <button onClick={() => move(col.id, t.id, -1)} style={iconBtn}>←</button>}
-                      {colIdx < 3 && <button onClick={() => move(col.id, t.id, 1)} style={iconBtn}>→</button>}
-                      <button onClick={() => removeTask(col.id, t.id)} style={iconBtn}><Trash2 size={12} /></button>
+                {(kanban[col.id] || []).map(t => {
+                  const editable = canEditTask(t);
+                  const who = team.find(m => m.id === t.assignedTo);
+                  return (
+                    <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, background: C.cardAlt, borderRadius: 8, padding: "8px 10px" }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0, flex: 1 }}>
+                        <span style={{ fontSize: 13 }}>{t.text}</span>
+                        {who && <span style={{ fontSize: 10.5, fontWeight: 700, color: editable ? C.goldLight : C.muted }}>{who.name}{editable ? "" : " 🔒"}</span>}
+                      </div>
+                      <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                        {editable ? (
+                          <>
+                            {colIdx > 0 && <button onClick={() => move(col.id, t.id, -1)} style={iconBtn}>←</button>}
+                            {colIdx < 3 && <button onClick={() => move(col.id, t.id, 1)} style={iconBtn}>→</button>}
+                            <button onClick={() => removeTask(col.id, t.id)} style={iconBtn}><Trash2 size={12} /></button>
+                          </>
+                        ) : (
+                          <Lock size={13} color={C.muted} />
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
                 {(kanban[col.id] || []).length === 0 && <div style={{ fontSize: 12, color: C.muted }}>Vide</div>}
               </div>
             </Card>
@@ -1709,30 +1753,7 @@ function TabKanban({ kanban, setKanban, checks, setChecks, team, codes }) {
 
       <div>
         <H2>Checklists quotidiennes</H2>
-        <div style={{ color: C.muted, fontSize: 12, marginBottom: 8 }}>Chacun voit toutes les checklists, mais ne peut cocher que la sienne avec son code personnel. Le CEO peut tout cocher avec le code Administration.</div>
-
-        {!adminUnlocked && (
-          <Card style={{ marginBottom: 10 }}>
-            <Eyebrow>Déverrouiller ma checklist</Eyebrow>
-            <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-              <select value={whoPicker} onChange={e => { setWhoPicker(e.target.value); setUnlockError(false); }} style={{ ...inputStyle, flex: "1 1 120px" }}>
-                {team.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-              </select>
-              <input type="password" placeholder="Ton code" value={unlockCode}
-                onChange={e => { setUnlockCode(e.target.value); setUnlockError(false); }}
-                onKeyDown={e => { if (e.key === "Enter") tryUnlockMine(); }}
-                style={{ ...inputStyle, flex: "1 1 100px" }} />
-              <button onClick={tryUnlockMine} style={{ ...iconBtn, padding: "0 14px" }}>OK</button>
-            </div>
-            {unlockError && <div style={{ color: C.rustLight, fontSize: 11, marginTop: 6 }}>Code incorrect.</div>}
-            {myUnlock && <div style={{ color: C.greenLight, fontSize: 11, marginTop: 6 }}>✓ {team.find(m => m.id === myUnlock)?.name} peut cocher sa checklist.</div>}
-            <div style={{ marginTop: 8 }}>
-              <MiniUnlock strict code={codes.admin} label="Ou code Administration (CEO — tout déverrouiller)" onUnlock={() => setAdminUnlocked(true)} />
-            </div>
-          </Card>
-        )}
-        {adminUnlocked && <div style={{ color: C.greenLight, fontSize: 12, marginBottom: 10 }}>✓ Mode Administration : toutes les checklists sont modifiables.</div>}
-
+        <div style={{ color: C.muted, fontSize: 12, marginBottom: 8 }}>Chacun voit toutes les checklists, mais ne peut cocher que la sienne (déverrouille ton code en haut). Le CEO peut tout cocher avec le code Administration.</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {team.map(m => {
             const editable = canEdit(m.id);
@@ -2550,9 +2571,6 @@ function PricingListEditor({ title, rows, onChange, priceMode }) {
   function updateRow(idx, patch) {
     onChange(rows.map((r, i) => i === idx ? { ...r, ...patch } : r));
   }
-  function removeRow(idx) {
-    onChange(rows.filter((_, i) => i !== idx));
-  }
   function addRow() {
     if (!newRow.name.trim()) return;
     if (isText) {
@@ -2585,7 +2603,6 @@ function PricingListEditor({ title, rows, onChange, priceMode }) {
                 <input value={r.note || ""} onChange={e => updateRow(idx, { note: e.target.value })} style={{ ...inputStyle, flex: "1 1 100px" }} placeholder="Note (ex: Sur devis)" />
               </>
             )}
-            <button onClick={() => removeRow(idx)} style={{ background: "none", border: "none", color: C.rustLight, cursor: "pointer" }}><Trash2 size={16} /></button>
           </div>
         ))}
         {rows.length === 0 && <div style={{ color: C.muted, fontSize: 12, textAlign: "center", padding: 10 }}>Aucune offre pour l'instant.</div>}
@@ -2614,7 +2631,6 @@ function TabLiens({ links, setLinks, team }) {
     setLinks([...links, { ...form, id: Date.now() }]);
     setForm({ label: "", url: "", addedBy: team[0]?.id || "" });
   }
-  function remove(id) { setLinks(links.filter(l => l.id !== id)); }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -2641,7 +2657,6 @@ function TabLiens({ links, setLinks, team }) {
               </div>
               <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
                 <a href={l.url} target="_blank" rel="noopener noreferrer" style={{ color: C.goldLight }}><ExternalLink size={16} /></a>
-                <button onClick={() => remove(l.id)} style={{ background: "none", border: "none", color: C.rustLight, cursor: "pointer" }}><Trash2 size={16} /></button>
               </div>
             </div>
           </Card>
