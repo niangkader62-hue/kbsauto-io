@@ -1021,6 +1021,7 @@ export default function App() {
   const [kanban, setKanban] = useState({ todo: [], doing: [], review: [], done: [] });
   const [checks, setChecks] = useState({ ceo: [], catherine: [], sacko: [] });
   const [links, setLinks] = useState([]);
+  const [caisse, setCaisse] = useState({ ops: [], debts: [] });
   const [expenses, setExpenses] = useState([]);
   const [dettes, setDettes] = useState([]);
   const [prospection, setProspection] = useState([]);
@@ -1044,6 +1045,7 @@ export default function App() {
       setKanban(await loadShared("kbs:kanban", { todo: [], doing: [], review: [], done: [] }));
       setChecks(await loadShared("kbs:checks", { ceo: [], catherine: [], sacko: [] }));
       setLinks(await loadShared("kbs:links", []));
+      setCaisse(await loadShared("kbs:caisse", { ops: [], debts: [] }));
       setExpenses(await loadShared("kbs:expenses", []));
       setDettes(await loadShared("kbs:dettes", []));
       setProspection(await loadShared("kbs:prospection", []));
@@ -1073,6 +1075,7 @@ export default function App() {
   useEffect(() => { if (loaded) persist("kbs:kanban", kanban); }, [kanban, loaded]);
   useEffect(() => { if (loaded) persist("kbs:checks", checks); }, [checks, loaded]);
   useEffect(() => { if (loaded) persist("kbs:links", links); }, [links, loaded]);
+  useEffect(() => { if (loaded) persist("kbs:caisse", caisse); }, [caisse, loaded]);
   useEffect(() => { if (loaded) persist("kbs:expenses", expenses); }, [expenses, loaded]);
   useEffect(() => { if (loaded) persist("kbs:dettes", dettes); }, [dettes, loaded]);
   useEffect(() => { if (loaded) persist("kbs:prospection", prospection); }, [prospection, loaded]);
@@ -1097,6 +1100,7 @@ export default function App() {
     setKanban({ todo: [], doing: [], review: [], done: [] });
     setChecks({});
     setLinks([]);
+    setCaisse({ ops: [], debts: [] });
     setExpenses([]);
     setDettes([]);
     setProspection([]);
@@ -1127,6 +1131,7 @@ export default function App() {
     adminAgence: { label: "Agence", icon: MapPin },
     adminTarifs: { label: "Tarifs", icon: Banknote },
     adminFormation: { label: "Formation", icon: BookOpen },
+    adminCaisse: { label: "Caisse Perso", icon: Wallet },
     adminReset: { label: "Réinitialisation", icon: AlertTriangle },
     formation: { label: "Formation", icon: BookOpen },
   };
@@ -1136,7 +1141,7 @@ export default function App() {
     { id: "ventes", label: "Ventes & Finance", icon: Wallet, tabs: ["crm", "devis", "tresorerie", "dettes", "tarifs"] },
     { id: "marketing", label: "Marketing", icon: Flame, tabs: ["cible", "copywriting", "prospection", "terrain"] },
     { id: "ressources", label: "Ressources", icon: Sparkles, tabs: ["outils", "academie", "plan", "liens", "formation"] },
-    { id: "admin", label: "Administration", icon: Shield, tabs: ["adminEquipe", "adminCodes", "adminAgence", "adminTarifs", "adminFormation", "adminReset"] },
+    { id: "admin", label: "Administration", icon: Shield, tabs: ["adminEquipe", "adminCodes", "adminAgence", "adminTarifs", "adminFormation", "adminCaisse", "adminReset"] },
   ];
 
   function selectCategory(catId) {
@@ -1267,7 +1272,7 @@ export default function App() {
             {tab === "formation" && <TabFormation team={team} codes={codes} guides={guides} formationLiens={formationLiens} />}
           </>
         )}
-        {category === "admin" && <TabAdministration section={tab} team={team} setTeam={setTeam} codes={codes} setCodes={setCodes} onResetAll={resetAllData} agency={agency} setAgency={setAgency} guides={guides} setGuides={setGuides} formationLiens={formationLiens} setFormationLiens={setFormationLiens} pricing={pricing} setPricing={setPricing} />}
+        {category === "admin" && <TabAdministration section={tab} caisse={caisse} setCaisse={setCaisse} team={team} setTeam={setTeam} codes={codes} setCodes={setCodes} onResetAll={resetAllData} agency={agency} setAgency={setAgency} guides={guides} setGuides={setGuides} formationLiens={formationLiens} setFormationLiens={setFormationLiens} pricing={pricing} setPricing={setPricing} />}
       </div>
       </div>
       )}
@@ -2981,7 +2986,262 @@ function TabFormation({ team, codes, guides, formationLiens }) {
 }
 
 /* ---------------------------------- TAB: ADMINISTRATION ---------------------------------- */
-function TabAdministration({ section, team, setTeam, codes, setCodes, onResetAll, agency, setAgency, guides, setGuides, formationLiens, setFormationLiens, pricing, setPricing }) {
+/* ---------------------------------- TAB: CAISSE PERSO (privée CEO, sous Administration) ---------------------------------- */
+function TabCaissePerso({ caisse, setCaisse }) {
+  const ops = caisse?.ops || [];
+  const debts = caisse?.debts || [];
+  const nowD = new Date();
+  const iso = (d) => d.toISOString().slice(0, 10);
+  const hhmm = (d) => d.toTimeString().slice(0, 5);
+  const fmt = (n) => Math.abs(n).toLocaleString("fr-FR").replace(/\s/g, " ");
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  const monthLabel = (ym) => { const p = ym.split("-"); return cap(new Date(p[0], p[1] - 1, 1).toLocaleDateString("fr-FR", { month: "long", year: "numeric" })); };
+
+  const [view, setView] = useState("ops");
+  const [masked, setMasked] = useState(true);
+  const [viewMonth, setViewMonth] = useState(iso(nowD).slice(0, 7));
+
+  const [oType, setOType] = useState("out");
+  const [oMontant, setOMontant] = useState("");
+  const [oLabel, setOLabel] = useState("");
+  const [oDate, setODate] = useState(iso(nowD));
+  const [oTime, setOTime] = useState(hhmm(nowD));
+  const [editOp, setEditOp] = useState(null);
+
+  const [dDir, setDDir] = useState("owed");
+  const [dMontant, setDMontant] = useState("");
+  const [dPrenom, setDPrenom] = useState("");
+  const [dNom, setDNom] = useState("");
+  const [dNumero, setDNumero] = useState("");
+  const [dMotif, setDMotif] = useState("");
+  const [dDate, setDDate] = useState(iso(nowD));
+  const [dTime, setDTime] = useState(hhmm(nowD));
+  const [editDebt, setEditDebt] = useState(null);
+
+  function setOpsList(next) { setCaisse({ ...caisse, ops: next, debts }); }
+  function setDebtsList(next) { setCaisse({ ...caisse, ops, debts: next }); }
+  function prefillOp() { const n = new Date(); setODate(iso(n)); setOTime(hhmm(n)); }
+  function prefillDebt() { const n = new Date(); setDDate(iso(n)); setDTime(hhmm(n)); }
+
+  function saveOp() {
+    const m = parseInt(oMontant, 10);
+    if (!m || m <= 0) return;
+    const label = oLabel.trim() || (oType === "out" ? "Dépense" : "Entrée");
+    if (editOp) {
+      setOpsList(ops.map(o => o.id === editOp ? { id: editOp, type: oType, montant: m, label, date: oDate, time: oTime } : o));
+      setEditOp(null);
+    } else {
+      setOpsList([...ops, { id: Date.now(), type: oType, montant: m, label, date: oDate, time: oTime }]);
+    }
+    setViewMonth(oDate.slice(0, 7));
+    setOMontant(""); setOLabel(""); setOType("out"); prefillOp();
+  }
+  function startEditOp(o) { setEditOp(o.id); setOType(o.type); setOMontant(String(o.montant)); setOLabel(o.label); setODate(o.date); setOTime(o.time); }
+  function cancelEditOp() { setEditOp(null); setOType("out"); setOMontant(""); setOLabel(""); prefillOp(); }
+  function delOp(id) { setOpsList(ops.filter(o => o.id !== id)); if (editOp === id) cancelEditOp(); }
+
+  function saveDebt() {
+    const m = parseInt(dMontant, 10);
+    if (!m || m <= 0) return;
+    const base = { dir: dDir, montant: m, prenom: dPrenom.trim(), nom: dNom.trim(), numero: dNumero.trim(), motif: dMotif.trim(), date: dDate, time: dTime };
+    if (editDebt) {
+      const old = debts.find(x => x.id === editDebt);
+      setDebtsList(debts.map(x => x.id === editDebt ? { ...base, id: editDebt, settled: old ? old.settled : false, settledDate: old ? old.settledDate : null } : x));
+      setEditDebt(null);
+    } else {
+      setDebtsList([...debts, { ...base, id: Date.now(), settled: false, settledDate: null }]);
+    }
+    clearDebtForm();
+  }
+  function clearDebtForm() { setDMontant(""); setDPrenom(""); setDNom(""); setDNumero(""); setDMotif(""); setDDir("owed"); prefillDebt(); }
+  function startEditDebt(d) { setEditDebt(d.id); setDDir(d.dir); setDMontant(String(d.montant)); setDPrenom(d.prenom || ""); setDNom(d.nom || ""); setDNumero(d.numero || ""); setDMotif(d.motif || ""); setDDate(d.date); setDTime(d.time); }
+  function cancelEditDebt() { setEditDebt(null); clearDebtForm(); }
+  function toggleSettle(id) { setDebtsList(debts.map(d => d.id === id ? { ...d, settled: !d.settled, settledDate: !d.settled ? iso(new Date()) : null } : d)); }
+  function delDebt(id) { setDebtsList(debts.filter(d => d.id !== id)); if (editDebt === id) cancelEditDebt(); }
+  function shiftMonth(delta) { const p = viewMonth.split("-"); setViewMonth(iso(new Date(p[0], p[1] - 1 + delta, 1)).slice(0, 7)); }
+
+  let tin = 0, tout = 0;
+  ops.forEach(o => { if (o.type === "in") tin += o.montant; else tout += o.montant; });
+  let settledOwed = 0, settledIOwe = 0, openOwed = 0, openIOwe = 0;
+  debts.forEach(d => {
+    if (d.settled) { if (d.dir === "owed") settledOwed += d.montant; else settledIOwe += d.montant; }
+    else { if (d.dir === "owed") openOwed += d.montant; else openIOwe += d.montant; }
+  });
+  const solde = (tin - tout) + settledOwed - settledIOwe;
+
+  const monthOps = ops.filter(o => o.date.slice(0, 7) === viewMonth);
+  let mIn = 0, mOut = 0; monthOps.forEach(o => { if (o.type === "in") mIn += o.montant; else mOut += o.montant; });
+  const byDay = {}; monthOps.forEach(o => { (byDay[o.date] = byDay[o.date] || []).push(o); });
+  const days = Object.keys(byDay).sort().reverse();
+  const prettyDate = (d) => { const p = d.split("-"); const dt = new Date(p[0], p[1] - 1, p[2]); if (d === iso(new Date())) return "Aujourd'hui"; if (d === iso(new Date(Date.now() - 86400000))) return "Hier"; return dt.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }); };
+  const openDebts = debts.filter(d => !d.settled).sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));
+  const doneDebts = debts.filter(d => d.settled).sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));
+
+  function genPDF() {
+    const doc = new jsPDF({ unit: "mm", format: "a4" });
+    const list = monthOps.slice().sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+    doc.setFontSize(16); doc.setTextColor(193, 95, 60); doc.text("KBS — Caisse Perso", 14, 18);
+    doc.setFontSize(11); doc.setTextColor(40, 40, 40); doc.text("Releve : " + monthLabel(viewMonth), 14, 26);
+    autoTable(doc, {
+      startY: 32,
+      head: [["Date", "Libelle", "Type", "Montant (FCFA)"]],
+      body: list.map(o => [o.date.split("-").reverse().join("/"), o.label, o.type === "in" ? "Entree" : "Depense", (o.type === "in" ? "+" : "-") + fmt(o.montant)]),
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [193, 95, 60] },
+    });
+    let y = (doc.lastAutoTable ? doc.lastAutoTable.finalY : 40) + 10;
+    doc.setFontSize(11); doc.setTextColor(30, 120, 70); doc.text("Total entrees : +" + fmt(mIn) + " FCFA", 14, y);
+    doc.setTextColor(180, 60, 45); doc.text("Total depenses : -" + fmt(mOut) + " FCFA", 14, y + 7);
+    doc.setTextColor(20, 20, 20); doc.setFontSize(13); doc.text("Net du mois : " + ((mIn - mOut) >= 0 ? "+" : "-") + fmt(mIn - mOut) + " FCFA", 14, y + 16);
+    doc.save("caisse-perso-" + viewMonth + ".pdf");
+  }
+
+  function debtCard(d) {
+    const isOwed = d.dir === "owed"; const col = isOwed ? C.greenLight : C.rustLight;
+    const name = ((d.prenom || "") + " " + (d.nom || "")).trim() || "Sans nom";
+    return (
+      <Card key={d.id} style={{ opacity: d.settled ? 0.6 : 1 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 700 }}>{name}{d.settled && <span style={{ fontSize: 11, fontWeight: 800, color: C.greenLight, marginLeft: 6 }}>· Réglée</span>}</div>
+            {d.numero && <div style={{ fontSize: 12, color: C.muted, marginTop: 1 }}>{d.numero}</div>}
+          </div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: col, whiteSpace: "nowrap" }}>{(isOwed ? "+" : "−") + (masked ? "•••" : fmt(d.montant))}</div>
+        </div>
+        <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>{(isOwed ? "On me doit" : "Je dois")}{d.motif ? " · " + d.motif : ""} · {d.date.split("-").reverse().join("/")} {d.time}</div>
+        <div style={{ display: "flex", gap: 7, marginTop: 10, flexWrap: "wrap" }}>
+          <button onClick={() => toggleSettle(d.id)} style={{ ...iconBtn, padding: "7px 11px", color: d.settled ? C.muted : C.greenLight }}>{d.settled ? "↺ Remettre en cours" : "✓ Marquer réglée"}</button>
+          <button onClick={() => startEditDebt(d)} style={{ ...iconBtn, padding: "7px 11px" }}>Modifier</button>
+          <button onClick={() => delDebt(d.id)} style={{ ...iconBtn, padding: "7px 11px", color: C.rustLight }}>Supprimer</button>
+        </div>
+      </Card>
+    );
+  }
+
+  const seg = (activeCol) => ({ flex: 1, padding: 9, border: "none", borderRadius: 7, cursor: "pointer", fontWeight: 700, fontSize: 13 });
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ color: C.muted, fontSize: 11.5 }}>Espace privé — tes dépenses, entrées et dettes personnelles, séparées de la trésorerie de l'agence.</div>
+
+      <Card>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ color: C.muted, fontSize: 12, fontWeight: 600 }}>Solde disponible (total)</span>
+          <button onClick={() => setMasked(!masked)} style={{ background: "none", border: "none", cursor: "pointer", color: C.muted, display: "flex", padding: 0 }}>{masked ? <EyeOff size={16} /> : <Eye size={16} />}</button>
+        </div>
+        <div style={{ fontSize: 28, fontWeight: 800, marginTop: 6, color: solde < 0 ? C.rustLight : C.text }}>{masked ? "•••••" : fmt(solde)} <span style={{ fontSize: 14, color: C.muted, fontWeight: 600 }}>FCFA</span></div>
+        <div style={{ display: "flex", gap: 22, marginTop: 12 }}>
+          <div style={{ fontSize: 12, color: C.muted }}>Entrées<div style={{ fontSize: 14, fontWeight: 700, color: C.greenLight, marginTop: 2 }}>{masked ? "•••••" : fmt(tin + settledOwed)}</div></div>
+          <div style={{ fontSize: 12, color: C.muted }}>Dépenses<div style={{ fontSize: 14, fontWeight: 700, color: C.rustLight, marginTop: 2 }}>{masked ? "•••••" : fmt(tout + settledIOwe)}</div></div>
+        </div>
+      </Card>
+
+      <div style={{ display: "flex", background: C.cardAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: 4 }}>
+        <button onClick={() => setView("ops")} style={{ ...seg(), background: view === "ops" ? C.gold : "transparent", color: view === "ops" ? "#FFFFFF" : C.muted }}>Opérations</button>
+        <button onClick={() => setView("debts")} style={{ ...seg(), background: view === "debts" ? C.gold : "transparent", color: view === "debts" ? "#FFFFFF" : C.muted }}>Dettes</button>
+      </div>
+
+      {view === "ops" && (<>
+        <Card>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <Eyebrow>{editOp ? "Modifier l'opération" : "Nouvelle opération"}</Eyebrow>
+            {editOp && <button onClick={cancelEditOp} style={{ background: "none", border: "none", color: C.muted, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Annuler</button>}
+          </div>
+          <div style={{ display: "flex", background: C.cardAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: 4, marginBottom: 8 }}>
+            <button onClick={() => setOType("out")} style={{ ...seg(), background: oType === "out" ? "rgba(192,57,43,0.15)" : "transparent", color: oType === "out" ? C.rustLight : C.muted }}>− Dépense</button>
+            <button onClick={() => setOType("in")} style={{ ...seg(), background: oType === "in" ? "rgba(46,139,111,0.15)" : "transparent", color: oType === "in" ? C.greenLight : C.muted }}>+ Entrée</button>
+          </div>
+          <input type="number" inputMode="numeric" placeholder="Montant (FCFA)" value={oMontant} onChange={e => setOMontant(e.target.value)} style={{ ...inputStyle, marginBottom: 8 }} />
+          <input placeholder="Libellé (ex: taxi, carburant, achat...)" value={oLabel} onChange={e => setOLabel(e.target.value)} style={{ ...inputStyle, marginBottom: 8 }} />
+          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+            <input type="date" value={oDate} onChange={e => setODate(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
+            <input type="time" value={oTime} onChange={e => setOTime(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
+          </div>
+          <button onClick={saveOp} style={btnGold}>{editOp ? "Mettre à jour" : "Enregistrer"}</button>
+        </Card>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10, background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "10px 12px" }}>
+          <button onClick={() => shiftMonth(-1)} style={{ ...iconBtn, padding: "6px 9px" }}><ChevronLeft size={16} /></button>
+          <div style={{ flex: 1, textAlign: "center" }}>
+            <div style={{ fontSize: 14, fontWeight: 800, textTransform: "capitalize" }}>{monthLabel(viewMonth)}</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: (mIn - mOut) < 0 ? C.rustLight : C.greenLight }}>{masked ? "•••••" : ("Net " + ((mIn - mOut) >= 0 ? "+" : "−") + fmt(mIn - mOut) + " FCFA")}</div>
+          </div>
+          <button onClick={() => shiftMonth(1)} style={{ ...iconBtn, padding: "6px 9px" }}><ChevronRight size={16} /></button>
+        </div>
+
+        <button onClick={genPDF} style={{ ...iconBtn, width: "100%", padding: 11, color: C.gold, borderColor: C.gold, borderStyle: "dashed", display: "flex", justifyContent: "center", gap: 8, fontWeight: 700 }}><FileText size={15} /> Télécharger le relevé du mois (PDF)</button>
+
+        {days.length === 0 && <div style={{ textAlign: "center", color: C.muted, fontSize: 13, padding: 20 }}>Aucune opération en {monthLabel(viewMonth).toLowerCase()}.</div>}
+        {days.map(d => {
+          const list = byDay[d].slice().sort((a, b) => b.time.localeCompare(a.time));
+          let sin = 0, sout = 0; list.forEach(e => { if (e.type === "in") sin += e.montant; else sout += e.montant; });
+          const dayS = sin - sout;
+          return (
+            <div key={d}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "4px 2px 6px" }}>
+                <span style={{ fontSize: 13.5, fontWeight: 800, textTransform: "capitalize" }}>{prettyDate(d)}</span>
+                <span style={{ fontSize: 12.5, fontWeight: 800, color: dayS < 0 ? C.rustLight : C.greenLight }}>{masked ? "•••••" : ((dayS >= 0 ? "+" : "−") + fmt(dayS) + " FCFA")}</span>
+              </div>
+              {list.map(o => {
+                const isIn = o.type === "in"; const col = isIn ? C.greenLight : C.rustLight;
+                return (
+                  <div key={o.id} style={{ display: "flex", alignItems: "center", gap: 10, background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 12px", marginBottom: 6 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: col, flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600 }}>{o.label}</div>
+                      <div style={{ fontSize: 11.5, color: C.muted }}>{o.time}</div>
+                    </div>
+                    <span style={{ fontSize: 14, fontWeight: 800, color: col, whiteSpace: "nowrap" }}>{(isIn ? "+" : "−") + (masked ? "•••" : fmt(o.montant))}</span>
+                    <button onClick={() => startEditOp(o)} style={{ ...iconBtn, padding: "5px 7px" }}><Pencil size={13} /></button>
+                    <button onClick={() => delOp(o.id)} style={{ background: "none", border: "none", color: C.rustLight, cursor: "pointer" }}><Trash2 size={14} /></button>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </>)}
+
+      {view === "debts" && (<>
+        <div style={{ display: "flex", gap: 10 }}>
+          <Card style={{ flex: 1 }}><div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase" }}>On me doit</div><div style={{ fontSize: 18, fontWeight: 800, color: C.greenLight, marginTop: 5 }}>{masked ? "•••••" : fmt(openOwed)} F</div></Card>
+          <Card style={{ flex: 1 }}><div style={{ fontSize: 11, color: C.muted, fontWeight: 700, textTransform: "uppercase" }}>Je dois</div><div style={{ fontSize: 18, fontWeight: 800, color: C.rustLight, marginTop: 5 }}>{masked ? "•••••" : fmt(openIOwe)} F</div></Card>
+        </div>
+
+        <Card>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <Eyebrow>{editDebt ? "Modifier la dette" : "Nouvelle dette"}</Eyebrow>
+            {editDebt && <button onClick={cancelEditDebt} style={{ background: "none", border: "none", color: C.muted, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Annuler</button>}
+          </div>
+          <div style={{ display: "flex", background: C.cardAlt, border: `1px solid ${C.border}`, borderRadius: 10, padding: 4, marginBottom: 8 }}>
+            <button onClick={() => setDDir("owed")} style={{ ...seg(), background: dDir === "owed" ? "rgba(46,139,111,0.15)" : "transparent", color: dDir === "owed" ? C.greenLight : C.muted }}>On me doit</button>
+            <button onClick={() => setDDir("iowe")} style={{ ...seg(), background: dDir === "iowe" ? "rgba(192,57,43,0.15)" : "transparent", color: dDir === "iowe" ? C.rustLight : C.muted }}>Je dois</button>
+          </div>
+          <input type="number" inputMode="numeric" placeholder="Montant (FCFA)" value={dMontant} onChange={e => setDMontant(e.target.value)} style={{ ...inputStyle, marginBottom: 8 }} />
+          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+            <input placeholder="Prénom (facultatif)" value={dPrenom} onChange={e => setDPrenom(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
+            <input placeholder="Nom (facultatif)" value={dNom} onChange={e => setDNom(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
+          </div>
+          <input placeholder="Numéro (facultatif)" value={dNumero} onChange={e => setDNumero(e.target.value)} style={{ ...inputStyle, marginBottom: 8 }} />
+          <input placeholder="Motif (facultatif)" value={dMotif} onChange={e => setDMotif(e.target.value)} style={{ ...inputStyle, marginBottom: 8 }} />
+          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+            <input type="date" value={dDate} onChange={e => setDDate(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
+            <input type="time" value={dTime} onChange={e => setDTime(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
+          </div>
+          <button onClick={saveDebt} style={btnGold}>{editDebt ? "Mettre à jour" : "Enregistrer la dette"}</button>
+        </Card>
+
+        <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: 1, color: C.muted, textTransform: "uppercase", margin: "4px 2px" }}>En cours ({openDebts.length})</div>
+        {openDebts.length === 0 && <div style={{ textAlign: "center", color: C.muted, fontSize: 13, padding: 14 }}>Aucune dette en cours.</div>}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{openDebts.map(d => debtCard(d))}</div>
+        {doneDebts.length > 0 && <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: 1, color: C.muted, textTransform: "uppercase", margin: "14px 2px 4px" }}>Réglées ({doneDebts.length})</div>}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{doneDebts.map(d => debtCard(d))}</div>
+      </>)}
+    </div>
+  );
+}
+
+function TabAdministration({ section, caisse, setCaisse, team, setTeam, codes, setCodes, onResetAll, agency, setAgency, guides, setGuides, formationLiens, setFormationLiens, pricing, setPricing }) {
   const [adminUnlocked, setAdminUnlocked] = useState(false);
   const [form, setForm] = useState({ name: "", role: "", checklistText: "" });
   const [editingId, setEditingId] = useState(null);
@@ -3276,6 +3536,8 @@ function TabAdministration({ section, team, setTeam, codes, setCodes, onResetAll
         <button onClick={saveGuides} style={btnGold}><Save size={14} /> {guidesSaved ? "Enregistré ✓" : "Enregistrer les guides"}</button>
       </div>
       </>)}
+
+      {section === "adminCaisse" && <TabCaissePerso caisse={caisse} setCaisse={setCaisse} />}
 
       {section === "adminReset" && (<>
       <div>
