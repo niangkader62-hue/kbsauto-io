@@ -108,10 +108,14 @@ Vise 8 a 12 concurrents detailles minimum (jusqu'a ~50 si pertinent), 2 a 4 pers
 }
 
 function buildUserContent(formData: any): string {
+  // Les photos (dataURL base64) ne sont PAS envoyees a l'IA : ce sont de longues
+  // chaines de texte inutilisables comme image et qui gonfleraient enormement le
+  // cout en tokens. Elles restent stockees dans la fiche pour l'usage interne KBS.
+  const { photoClient: _pc, photoPage: _pp, ...textFields } = formData || {};
   return `Voici la fiche diagnostic du client. Realise la recherche puis produis le JSON demande.
 
 FICHE CLIENT (form_data) :
-${JSON.stringify(formData, null, 2)}`;
+${JSON.stringify(textFields, null, 2)}`;
 }
 
 // ---- Appel Anthropic avec gestion du server-tool loop (pause_turn) ----
