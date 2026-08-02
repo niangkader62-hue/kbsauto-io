@@ -1840,22 +1840,32 @@ function DiagnosticSection({ prospect, agency }) {
     // On enregistre d'abord la fiche pour que la fonction lise le form_data a jour.
     const base = baseRecord("draft");
     await saveDiagnostic(clientId, base);
-    setDiag(base);
+    // Affiche tout de suite l'ecran "Recherche en cours" pendant l'attente.
+    setDiag({ ...base, status: "generating", startedAt: new Date().toISOString() });
+    // Filet de securite : si la connexion tombe pendant l'attente (1 a 2 min),
+    // le polling recuperera le resultat que la fonction a ecrit en base.
+    startPolling();
     try {
+      // La fonction genere de maniere synchrone : la reponse arrive apres 1 a 2
+      // minutes et contient directement le diagnostic termine (ou l'echec).
       const res = await fetch(DIAGNOSTIC_FUNCTION_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json", apikey: SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}` },
         body: JSON.stringify({ clientId }),
       });
       const data = await res.json().catch(() => ({}));
-      if (res.status === 202 || data.status === "generating") {
-        setDiag({ ...base, status: "generating", startedAt: new Date().toISOString() });
-        startPolling();
-      } else {
-        window.alert(data.error || `Le lancement a échoué (code ${res.status}).`);
+      if (data && (data.status === "completed" || data.status === "failed")) {
+        stopPolling();
+        setDiag(data);
+      } else if (res.status === 202 || data.status === "generating") {
+        // Compat : ancien comportement -> on laisse le polling faire le travail.
+      } else if (data && data.error) {
+        stopPolling();
+        setDiag({ ...base, status: "failed", errorMessage: data.error });
       }
     } catch (e) {
-      window.alert("Connexion à la fonction impossible : " + (e?.message || e));
+      // Connexion coupee pendant l'attente : on garde le polling actif, la
+      // fonction a pu terminer et ecrire le resultat en base malgre tout.
     }
     setLaunching(false);
   }
