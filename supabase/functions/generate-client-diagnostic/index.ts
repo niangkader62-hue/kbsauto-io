@@ -195,26 +195,30 @@ function extractJSON(text: string): any {
   return JSON.parse(t);
 }
 
-// ---- Travail de fond : genere et met a jour le diagnostic ----
-async function runGeneration(clientId: string, base: any) {
+// ---- Genere le diagnostic, l'ecrit dans kbs_storage ET renvoie l'enregistrement.
+// Execute de maniere SYNCHRONE (pendant que l'app attend la reponse) : ainsi
+// l'invocation reste active tout du long et n'est pas coupee par le serveur,
+// contrairement a une tache de fond.
+async function runGeneration(clientId: string, base: any): Promise<any> {
   try {
     const { text, cost } = await callAnthropic(base.formData || {});
     let parsed: any;
     try {
       parsed = extractJSON(text);
     } catch (_e) {
-      await saveDiagnostic(clientId, {
+      const rec = {
         ...base,
         status: "failed",
         errorMessage: "La reponse de l'IA n'etait pas un JSON exploitable. Tu peux relancer.",
         rawText: text.slice(0, 4000),
-        generationCostEstimate: cost,
+        generationCostEstimate: Number(cost.toFixed(3)),
         updatedAt: new Date().toISOString(),
-      });
-      return;
+      };
+      await saveDiagnostic(clientId, rec);
+      return rec;
     }
 
-    await saveDiagnostic(clientId, {
+    const rec = {
       ...base,
       status: "completed",
       errorMessage: "",
@@ -224,14 +228,18 @@ async function runGeneration(clientId: string, base: any) {
       generationCostEstimate: Number(cost.toFixed(3)),
       completedAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-    });
+    };
+    await saveDiagnostic(clientId, rec);
+    return rec;
   } catch (e) {
-    await saveDiagnostic(clientId, {
+    const rec = {
       ...base,
       status: "failed",
       errorMessage: String(e).slice(0, 500),
       updatedAt: new Date().toISOString(),
-    });
+    };
+    await saveDiagnostic(clientId, rec);
+    return rec;
   }
 }
 
@@ -285,14 +293,15 @@ Deno.serve(async (req) => {
       startedAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+    // On marque "generating" (visible dans l'onglet Administration pendant
+    // l'attente), puis on genere de maniere SYNCHRONE et on renvoie le resultat
+    // directement. L'app attend cette reponse (1 a 2 min) puis affiche le guide.
     await saveDiagnostic(String(clientId), base);
 
-    // Travail long en tache de fond ; on repond tout de suite.
-    // @ts-ignore EdgeRuntime est fourni par le runtime Supabase.
-    EdgeRuntime.waitUntil(runGeneration(String(clientId), base));
+    const rec = await runGeneration(String(clientId), base);
 
-    return new Response(JSON.stringify({ status: "generating" }), {
-      status: 202,
+    return new Response(JSON.stringify(rec), {
+      status: 200,
       headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
     });
   } catch (e) {
