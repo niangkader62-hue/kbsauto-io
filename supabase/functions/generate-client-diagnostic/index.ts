@@ -108,10 +108,14 @@ Vise 8 a 12 concurrents detailles minimum (jusqu'a ~50 si pertinent), 2 a 4 pers
 }
 
 function buildUserContent(formData: any): string {
+  // Les photos (dataURL base64) ne sont PAS envoyees a l'IA : ce sont de longues
+  // chaines de texte inutilisables comme image et qui gonfleraient enormement le
+  // cout en tokens. Elles restent stockees dans la fiche pour l'usage interne KBS.
+  const { photoClient: _pc, photoPage: _pp, ...textFields } = formData || {};
   return `Voici la fiche diagnostic du client. Realise la recherche puis produis le JSON demande.
 
 FICHE CLIENT (form_data) :
-${JSON.stringify(formData, null, 2)}`;
+${JSON.stringify(textFields, null, 2)}`;
 }
 
 // ---- Appel Anthropic avec gestion du server-tool loop (pause_turn) ----
@@ -135,9 +139,14 @@ async function callAnthropic(formData: any) {
       },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 24000,
+        max_tokens: 16000,
+        // Thinking desactive + nombre de recherches limite : indispensable pour
+        // que la generation se termine DANS la limite de temps d'une Edge
+        // Function Supabase (sinon la tache de fond est coupee et le statut
+        // reste bloque sur "generating").
+        thinking: { type: "disabled" },
         system: buildSystemPrompt(),
-        tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 25 }],
+        tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 8 }],
         messages,
       }),
     });
@@ -186,26 +195,30 @@ function extractJSON(text: string): any {
   return JSON.parse(t);
 }
 
-// ---- Travail de fond : genere et met a jour le diagnostic ----
-async function runGeneration(clientId: string, base: any) {
+// ---- Genere le diagnostic, l'ecrit dans kbs_storage ET renvoie l'enregistrement.
+// Execute de maniere SYNCHRONE (pendant que l'app attend la reponse) : ainsi
+// l'invocation reste active tout du long et n'est pas coupee par le serveur,
+// contrairement a une tache de fond.
+async function runGeneration(clientId: string, base: any): Promise<any> {
   try {
     const { text, cost } = await callAnthropic(base.formData || {});
     let parsed: any;
     try {
       parsed = extractJSON(text);
     } catch (_e) {
-      await saveDiagnostic(clientId, {
+      const rec = {
         ...base,
         status: "failed",
         errorMessage: "La reponse de l'IA n'etait pas un JSON exploitable. Tu peux relancer.",
         rawText: text.slice(0, 4000),
-        generationCostEstimate: cost,
+        generationCostEstimate: Number(cost.toFixed(3)),
         updatedAt: new Date().toISOString(),
-      });
-      return;
+      };
+      await saveDiagnostic(clientId, rec);
+      return rec;
     }
 
-    await saveDiagnostic(clientId, {
+    const rec = {
       ...base,
       status: "completed",
       errorMessage: "",
@@ -215,14 +228,18 @@ async function runGeneration(clientId: string, base: any) {
       generationCostEstimate: Number(cost.toFixed(3)),
       completedAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-    });
+    };
+    await saveDiagnostic(clientId, rec);
+    return rec;
   } catch (e) {
-    await saveDiagnostic(clientId, {
+    const rec = {
       ...base,
       status: "failed",
       errorMessage: String(e).slice(0, 500),
       updatedAt: new Date().toISOString(),
-    });
+    };
+    await saveDiagnostic(clientId, rec);
+    return rec;
   }
 }
 
@@ -254,12 +271,19 @@ Deno.serve(async (req) => {
         headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
       });
     }
-    // Verrou anti double-clic / double-cout : un seul diagnostic en generation a la fois.
+    // Verrou anti double-clic / double-cout : un seul diagnostic en generation a
+    // la fois. Mais si une generation precedente est restee bloquee sur
+    // "generating" depuis plus de 6 minutes (tache de fond coupee par le
+    // serveur), on la considere echouee et on autorise une relance.
     if (existing.status === "generating") {
-      return new Response(JSON.stringify({ status: "generating", message: "Une generation est deja en cours." }), {
-        status: 409,
-        headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-      });
+      const startedMs = Date.parse(existing.startedAt || existing.updatedAt || "") || 0;
+      const stale = Date.now() - startedMs > 6 * 60 * 1000;
+      if (!stale) {
+        return new Response(JSON.stringify({ status: "generating", message: "Une generation est deja en cours." }), {
+          status: 409,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
     }
 
     const base = {
@@ -269,14 +293,15 @@ Deno.serve(async (req) => {
       startedAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+    // On marque "generating" (visible dans l'onglet Administration pendant
+    // l'attente), puis on genere de maniere SYNCHRONE et on renvoie le resultat
+    // directement. L'app attend cette reponse (1 a 2 min) puis affiche le guide.
     await saveDiagnostic(String(clientId), base);
 
-    // Travail long en tache de fond ; on repond tout de suite.
-    // @ts-ignore EdgeRuntime est fourni par le runtime Supabase.
-    EdgeRuntime.waitUntil(runGeneration(String(clientId), base));
+    const rec = await runGeneration(String(clientId), base);
 
-    return new Response(JSON.stringify({ status: "generating" }), {
-      status: 202,
+    return new Response(JSON.stringify(rec), {
+      status: 200,
       headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
     });
   } catch (e) {
