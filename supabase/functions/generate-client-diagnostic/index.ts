@@ -139,9 +139,14 @@ async function callAnthropic(formData: any) {
       },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 24000,
+        max_tokens: 16000,
+        // Thinking desactive + nombre de recherches limite : indispensable pour
+        // que la generation se termine DANS la limite de temps d'une Edge
+        // Function Supabase (sinon la tache de fond est coupee et le statut
+        // reste bloque sur "generating").
+        thinking: { type: "disabled" },
         system: buildSystemPrompt(),
-        tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 25 }],
+        tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 8 }],
         messages,
       }),
     });
@@ -258,12 +263,19 @@ Deno.serve(async (req) => {
         headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
       });
     }
-    // Verrou anti double-clic / double-cout : un seul diagnostic en generation a la fois.
+    // Verrou anti double-clic / double-cout : un seul diagnostic en generation a
+    // la fois. Mais si une generation precedente est restee bloquee sur
+    // "generating" depuis plus de 6 minutes (tache de fond coupee par le
+    // serveur), on la considere echouee et on autorise une relance.
     if (existing.status === "generating") {
-      return new Response(JSON.stringify({ status: "generating", message: "Une generation est deja en cours." }), {
-        status: 409,
-        headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-      });
+      const startedMs = Date.parse(existing.startedAt || existing.updatedAt || "") || 0;
+      const stale = Date.now() - startedMs > 6 * 60 * 1000;
+      if (!stale) {
+        return new Response(JSON.stringify({ status: "generating", message: "Une generation est deja en cours." }), {
+          status: 409,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        });
+      }
     }
 
     const base = {
