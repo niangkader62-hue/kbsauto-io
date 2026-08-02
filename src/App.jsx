@@ -72,6 +72,7 @@ function codeMatchesStrict(input, expected) {
 /* ---------------------------------- NOTIFICATIONS PUSH ---------------------------------- */
 const VAPID_PUBLIC_KEY = "BKrHlym_YWrE-ByaFkXDz8-xAukgCRyrPxsx-klRahzs_uBH68UjVE0EJ2eDyghQnBegMV7-1Kkan69rXfArxb8";
 const NOTIFY_FUNCTION_URL = "https://vspepqwipgjkmnemwlfa.supabase.co/functions/v1/send-notification";
+const DIAGNOSTIC_FUNCTION_URL = "https://vspepqwipgjkmnemwlfa.supabase.co/functions/v1/generate-client-diagnostic";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_olyJ2hEstrKN7KR4v4mNaQ_sYXVjw04";
 
 function urlBase64ToUint8Array(base64String) {
@@ -844,6 +845,73 @@ async function saveShared(key, value) {
   }
 }
 
+/* ---------------------------------- DIAGNOSTICS IA (stockage kbs_storage) ---------------------------------- */
+// Chaque diagnostic vit sous sa propre cle "diagnostic:{clientId}" pour isoler
+// les ecritures (l'app ET la fonction Edge ecrivent la meme ligne, mais jamais
+// en meme temps grace au verrou de statut). Cela evite d'ecraser le resultat
+// genere en arriere-plan par la fonction.
+function diagKey(clientId) { return `diagnostic:${clientId}`; }
+
+async function loadDiagnostic(clientId) {
+  return loadShared(diagKey(clientId), null);
+}
+async function saveDiagnostic(clientId, value) {
+  return saveShared(diagKey(clientId), value);
+}
+// Charge tous les diagnostics (pour l'onglet Administration).
+async function loadAllDiagnostics() {
+  try {
+    const { data, error } = await supabase.from("kbs_storage").select("key,value").like("key", "diagnostic:%");
+    if (error || !data) return [];
+    return data.map(r => r.value).filter(Boolean);
+  } catch { return []; }
+}
+
+function emptyDiagnosticForm(prospect) {
+  return {
+    // Identite (pre-remplie depuis la fiche client existante)
+    nom: prospect?.nom || "",
+    prenom: prospect?.prenom || "",
+    whatsapp: prospect?.whatsapp || "",
+    quartierVille: prospect?.quartier || "",
+    marque: "",
+    // Business
+    niche: "",
+    descriptionBusiness: "",
+    catalogue: "",
+    panierMoyen: "",
+    budgetPubActuel: "",
+    // Presence digitale
+    tiktok: "",
+    facebook: "",
+    instagram: "",
+    abonnes: "",
+    dejaVenduEnLigne: "non",
+    detailsVentes: "",
+    derniereActivite: "",
+    // Diagnostic
+    cibleActuelle: "",
+    problemePercu: "",
+    objectifs30j: "",
+    objectifsLongTerme: "",
+    concurrentsConnus: "",
+    // Photos (dataURL base64)
+    photoClient: "",
+    photoPage: "",
+    // Notes internes KBS (jamais exportees au client)
+    noteCommercial: "",
+    budgetReelEstime: "",
+    niveauUrgence: "Moyen",
+  };
+}
+
+// Le formulaire est considere "complet" quand l'essentiel pour lancer une
+// recherche Ide qualite est renseigne (niche + description + objectifs).
+function diagnosticFormComplete(f) {
+  if (!f) return false;
+  return Boolean((f.niche || "").trim() && (f.descriptionBusiness || "").trim() && (f.problemePercu || "").trim() && (f.objectifs30j || "").trim());
+}
+
 /* ---------------------------------- UI PRIMITIVES ---------------------------------- */
 function Card({ children, style }) {
   return (
@@ -1127,6 +1195,7 @@ export default function App() {
     plan: { label: "Plan 30 jours", icon: CalendarDays },
     liens: { label: "Liens partagés", icon: Link2 },
     adminEquipe: { label: "Équipe", icon: Users },
+    adminDiagnostics: { label: "Diagnostics IA", icon: Sparkles },
     adminCodes: { label: "Codes d'accès", icon: KeyRound },
     adminAgence: { label: "Agence", icon: MapPin },
     adminTarifs: { label: "Tarifs", icon: Banknote },
@@ -1141,7 +1210,7 @@ export default function App() {
     { id: "ventes", label: "Ventes & Finance", icon: Wallet, tabs: ["crm", "devis", "tresorerie", "dettes", "tarifs"] },
     { id: "marketing", label: "Marketing", icon: Flame, tabs: ["cible", "copywriting", "prospection", "terrain"] },
     { id: "ressources", label: "Ressources", icon: Sparkles, tabs: ["outils", "academie", "plan", "liens", "formation"] },
-    { id: "admin", label: "Administration", icon: Shield, tabs: ["adminEquipe", "adminCodes", "adminAgence", "adminTarifs", "adminFormation", "adminCaisse", "adminReset"] },
+    { id: "admin", label: "Administration", icon: Shield, tabs: ["adminEquipe", "adminDiagnostics", "adminCodes", "adminAgence", "adminTarifs", "adminFormation", "adminCaisse", "adminReset"] },
   ];
 
   function selectCategory(catId) {
@@ -1539,11 +1608,643 @@ function TabCRM({ prospects, setProspects, totalCA, totalCommission, team, codes
                   <input placeholder="Ajouter une note (ex: relance faite, RDV pris…)" value={noteText} onChange={e => setNoteText(e.target.value)} style={{ ...inputStyle, flex: 1, fontSize: 12 }} />
                   <button onClick={() => addHistorique(p.id)} style={{ ...iconBtn, padding: "0 12px" }}><Plus size={13} /></button>
                 </div>
+
+                <DiagnosticSection prospect={p} agency={agency} />
               </div>
             )}
           </Card>
         );})}
       </div>
+    </div>
+  );
+}
+
+/* ---------------------------------- DIAGNOSTIC & GUIDE IA ---------------------------------- */
+
+// Compte les taches totales et cochees pour la barre de progression.
+function guideProgress(diag) {
+  const days = diag?.programJson?.days || [];
+  let total = 0, done = 0;
+  const cp = diag?.checklistProgress || {};
+  days.forEach(d => (d.tasks || []).forEach(t => { total++; if (cp[t.id]) done++; }));
+  return { total, done, pct: total ? Math.round((done / total) * 100) : 0 };
+}
+
+// Message WhatsApp pre-rempli. ATTENTION : wa.me ne peut PAS joindre un PDF
+// automatiquement ; il ne pre-remplit qu'un texte. L'ajout du PDF reste manuel.
+function whatsappGuideLink(prospect, diag) {
+  const phone = (prospect?.whatsapp || "").replace(/[^0-9]/g, "");
+  const prenom = prospect?.prenom || prospect?.nom || "";
+  const pos = diag?.guideContent?.positioning || "";
+  const dur = diag?.programJson?.durationDays || 30;
+  const txt =
+    `Bonjour ${prenom} 👋\n\n` +
+    `Voici ton diagnostic personnalise realise par KBS Digital Agency, avec ton programme de ${dur} jours et ta strategie sur mesure.\n\n` +
+    (pos ? `Positionnement recommande : ${pos}\n\n` : "") +
+    `Le guide complet (PDF) est pret : je te l'envoie juste apres ce message.`;
+  return `https://wa.me/${phone}?text=${encodeURIComponent(txt)}`;
+}
+
+// Export PDF du guide (jsPDF + autoTable, deja utilises ailleurs dans l'app).
+function generateGuidePDF(diag, prospect, agency) {
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const marginX = 15;
+  let y = 18;
+  const pageH = doc.internal.pageSize.getHeight();
+  const pageW = doc.internal.pageSize.getWidth();
+  const usableW = pageW - marginX * 2;
+
+  function ensure(space) { if (y + space > pageH - 15) { doc.addPage(); y = 18; } }
+  function title(t) {
+    ensure(12);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.setTextColor(193, 95, 60);
+    doc.text(t, marginX, y); y += 7;
+    doc.setTextColor(30, 30, 30);
+  }
+  function para(label, text) {
+    if (!text) return;
+    ensure(10);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(10.5);
+    if (label) { doc.text(label, marginX, y); y += 5; }
+    doc.setFont("helvetica", "normal"); doc.setFontSize(10);
+    const lines = doc.splitTextToSize(String(text), usableW);
+    lines.forEach(ln => { ensure(6); doc.text(ln, marginX, y); y += 5; });
+    y += 2;
+  }
+
+  // En-tete
+  doc.setFont("helvetica", "bold"); doc.setFontSize(16); doc.setTextColor(193, 95, 60);
+  doc.text(agency?.name || "KBS Digital Agency", marginX, y); y += 7;
+  doc.setFontSize(12); doc.setTextColor(30, 30, 30);
+  doc.text("Diagnostic & Guide strategique", marginX, y); y += 6;
+  doc.setFont("helvetica", "normal"); doc.setFontSize(10.5); doc.setTextColor(90, 90, 90);
+  doc.text(`Client : ${(prospect?.prenom || "")} ${(prospect?.nom || "")}`.trim(), marginX, y); y += 5;
+  doc.text(`Date : ${new Date().toLocaleDateString("fr-FR")}`, marginX, y); y += 9;
+  doc.setTextColor(30, 30, 30);
+
+  const g = diag?.guideContent || {};
+  const p = diag?.programJson || {};
+
+  title("Positionnement");
+  para("", g.positioning);
+  title("Le vrai probleme");
+  para("Ce que le client percoit :", g.perceivedProblem);
+  para("Le vrai probleme identifie :", g.realProblem);
+
+  if ((g.personas || []).length) {
+    title("Personas cibles");
+    g.personas.forEach(per => {
+      para(per.name || "Persona", per.description);
+      if ((per.pains || []).length) para("Frustrations :", per.pains.join(" · "));
+      if ((per.desires || []).length) para("Desirs :", per.desires.join(" · "));
+    });
+  }
+
+  if ((g.angles || []).length) {
+    title("Angles marketing");
+    g.angles.forEach((a, i) => {
+      para(`${i + 1}. ${a.title || ""}`, a.example);
+      if (a.hook) para("Accroche :", a.hook);
+    });
+  }
+
+  if ((p.kpis || []).length) {
+    title("KPI a suivre");
+    para("", p.kpis.map(k => `• ${k}`).join("\n"));
+  }
+
+  if ((p.days || []).length) {
+    ensure(20);
+    title(`Programme ${p.durationDays || 30} jours`);
+    const rows = p.days.map(d => [
+      String(d.day),
+      d.theme || "",
+      (d.tasks || []).map(t => `• ${t.label}`).join("\n"),
+    ]);
+    autoTable(doc, {
+      startY: y,
+      head: [["Jour", "Theme", "Taches"]],
+      body: rows,
+      styles: { fontSize: 8.5, cellPadding: 2, valign: "top" },
+      headStyles: { fillColor: [193, 95, 60], textColor: 255 },
+      columnStyles: { 0: { cellWidth: 12 }, 1: { cellWidth: 40 }, 2: { cellWidth: usableW - 52 } },
+      margin: { left: marginX, right: marginX },
+    });
+  }
+
+  const safe = ((prospect?.nom || "client")).replace(/\s+/g, "_");
+  doc.save(`Diagnostic_${safe}.pdf`);
+}
+
+// Petit uploader photo -> dataURL base64 (reutilise le pattern FileReader).
+function PhotoField({ label, value, onChange }) {
+  const inputRef = useRef(null);
+  function pick(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => onChange(reader.result);
+    reader.readAsDataURL(file);
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <label style={{ fontSize: 11, color: C.muted }}>{label}</label>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        {value
+          ? <img src={value} alt="" style={{ width: 46, height: 46, borderRadius: 8, objectFit: "cover", border: `1px solid ${C.border}` }} />
+          : <div style={{ width: 46, height: 46, borderRadius: 8, background: C.cardAlt, border: `1px dashed ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", color: C.muted, fontSize: 18 }}>📷</div>}
+        <input ref={inputRef} type="file" accept="image/*" onChange={pick} style={{ display: "none" }} />
+        <button onClick={() => inputRef.current?.click()} style={{ ...iconBtn, padding: "6px 10px" }}>{value ? "Changer" : "Ajouter"}</button>
+        {value && <button onClick={() => onChange("")} style={{ ...iconBtn, padding: "6px 10px", color: C.rustLight }}>Retirer</button>}
+      </div>
+    </div>
+  );
+}
+
+// Champ texte / textarea labellise, compact.
+function DField({ label, value, onChange, area, placeholder, type }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+      <label style={{ fontSize: 11, color: C.muted }}>{label}</label>
+      {area
+        ? <textarea value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} rows={area === true ? 3 : area} style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }} />
+        : <input type={type || "text"} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} style={inputStyle} />}
+    </div>
+  );
+}
+
+function DiagnosticSection({ prospect, agency }) {
+  const clientId = String(prospect.id);
+  const [open, setOpen] = useState(false);
+  const [diag, setDiag] = useState(undefined); // undefined = pas encore charge
+  const [form, setForm] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [savedMsg, setSavedMsg] = useState("");
+  const [launching, setLaunching] = useState(false);
+  const pollRef = useRef(null);
+
+  function stopPolling() { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } }
+  function startPolling() {
+    if (pollRef.current) return;
+    pollRef.current = setInterval(async () => {
+      const d = await loadDiagnostic(clientId);
+      if (d) setDiag(d);
+      if (d && d.status !== "generating") stopPolling();
+    }, 8000);
+  }
+  useEffect(() => () => stopPolling(), []);
+
+  useEffect(() => {
+    if (!open || diag !== undefined) return;
+    (async () => {
+      const d = await loadDiagnostic(clientId);
+      setDiag(d);
+      setForm(d?.formData ? { ...emptyDiagnosticForm(prospect), ...d.formData } : emptyDiagnosticForm(prospect));
+      if (d?.status === "generating") startPolling();
+    })();
+  }, [open]);
+
+  function baseRecord(status, extra) {
+    return {
+      clientId,
+      clientNom: `${prospect.prenom || ""} ${prospect.nom || ""}`.trim(),
+      whatsapp: prospect.whatsapp || "",
+      formData: form,
+      status,
+      checklistProgress: diag?.checklistProgress || {},
+      researchData: diag?.researchData || null,
+      guideContent: diag?.guideContent || null,
+      programJson: diag?.programJson || null,
+      generationCostEstimate: diag?.generationCostEstimate || 0,
+      errorMessage: "",
+      createdAt: diag?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      ...extra,
+    };
+  }
+
+  async function saveForm() {
+    setSaving(true);
+    const next = baseRecord(diag?.status === "completed" ? "completed" : "draft");
+    const err = await saveDiagnostic(clientId, next);
+    setSaving(false);
+    if (!err) { setDiag(next); setSavedMsg("Fiche enregistrée ✓"); setTimeout(() => setSavedMsg(""), 2500); }
+    else { setSavedMsg("Erreur : " + err); }
+  }
+
+  async function launch() {
+    if (!diagnosticFormComplete(form)) { setSavedMsg("Complète la niche, la description, le problème perçu et les objectifs 30j."); return; }
+    const ok = window.confirm("Cette génération est payante, environ 1 $, et prend 1 à 3 minutes.\n\nElle lance une recherche IA sur ~50 concurrents de la niche puis génère le programme et le guide. Continuer ?");
+    if (!ok) return;
+    setLaunching(true);
+    // On enregistre d'abord la fiche pour que la fonction lise le form_data a jour.
+    const base = baseRecord("draft");
+    await saveDiagnostic(clientId, base);
+    setDiag(base);
+    try {
+      const res = await fetch(DIAGNOSTIC_FUNCTION_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: SUPABASE_PUBLISHABLE_KEY, Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}` },
+        body: JSON.stringify({ clientId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 202 || data.status === "generating") {
+        setDiag({ ...base, status: "generating", startedAt: new Date().toISOString() });
+        startPolling();
+      } else {
+        window.alert(data.error || `Le lancement a échoué (code ${res.status}).`);
+      }
+    } catch (e) {
+      window.alert("Connexion à la fonction impossible : " + (e?.message || e));
+    }
+    setLaunching(false);
+  }
+
+  async function toggleTask(taskId) {
+    const cp = { ...(diag.checklistProgress || {}) };
+    cp[taskId] = !cp[taskId];
+    const next = { ...diag, checklistProgress: cp, updatedAt: new Date().toISOString() };
+    setDiag(next);
+    await saveDiagnostic(clientId, next);
+  }
+
+  const status = diag?.status;
+
+  return (
+    <div style={{ marginTop: 12, borderTop: `1px solid ${C.border}`, paddingTop: 12 }}>
+      <div onClick={() => setOpen(o => !o)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <Sparkles size={14} color={C.gold} />
+          <span style={{ fontSize: 12, fontWeight: 700, color: C.gold, textTransform: "uppercase", letterSpacing: 0.5 }}>Diagnostic & Guide IA</span>
+          {status && <StatusPill status={status} />}
+        </div>
+        {open ? <ChevronDown size={15} color={C.gold} /> : <ChevronRight size={15} color={C.gold} />}
+      </div>
+
+      {open && diag === undefined && <div style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>Chargement…</div>}
+
+      {open && diag !== undefined && (
+        <div style={{ marginTop: 10 }}>
+          {status === "generating" && <DiagGenerating diag={diag} />}
+          {status === "completed" && (
+            <InteractiveGuide diag={diag} prospect={prospect} agency={agency} onToggle={toggleTask} onEditForm={() => setDiag({ ...diag, status: "draft" })} onRelaunch={launch} launching={launching} />
+          )}
+          {(status === "failed") && (
+            <div style={{ background: "rgba(192,57,43,0.10)", border: `1px solid ${C.rust}`, borderRadius: 10, padding: 12, marginBottom: 10 }}>
+              <div style={{ fontSize: 12.5, color: C.rustLight, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}><AlertTriangle size={14} /> La génération a échoué</div>
+              <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>{diag.errorMessage || "Erreur inconnue."}</div>
+              <div style={{ fontSize: 11.5, color: C.muted, marginTop: 6 }}>Aucun nouveau débit tant que tu ne relances pas manuellement.</div>
+            </div>
+          )}
+
+          {(status === undefined || status === "draft" || status === "failed") && (
+            <DiagnosticForm form={form} setForm={setForm} onSave={saveForm} onLaunch={launch} saving={saving} launching={launching} savedMsg={savedMsg} complete={diagnosticFormComplete(form)} />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatusPill({ status }) {
+  const map = {
+    draft: { t: "Brouillon", c: C.muted, bg: C.cardAlt },
+    generating: { t: "Génération…", c: C.goldLight, bg: "rgba(193,95,60,0.14)" },
+    completed: { t: "Guide prêt", c: C.greenLight, bg: "rgba(46,139,111,0.14)" },
+    failed: { t: "Échec", c: C.rustLight, bg: "rgba(192,57,43,0.12)" },
+  };
+  const m = map[status] || map.draft;
+  return <span style={{ fontSize: 10.5, fontWeight: 700, color: m.c, background: m.bg, padding: "2px 8px", borderRadius: 20 }}>{m.t}</span>;
+}
+
+function DiagGenerating({ diag }) {
+  return (
+    <div style={{ background: C.cardAlt, borderRadius: 12, padding: 16, textAlign: "center", marginBottom: 10 }}>
+      <div style={{ fontSize: 26, marginBottom: 6 }}>🔎</div>
+      <div style={{ fontWeight: 700, fontSize: 13, color: C.goldLight }}>Recherche en cours…</div>
+      <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>L'IA analyse ~50 concurrents puis rédige le programme et le guide.<br />Compte 1 à 3 minutes — l'écran se met à jour automatiquement.</div>
+      <div style={{ height: 4, background: C.border, borderRadius: 4, marginTop: 12, overflow: "hidden" }}>
+        <div className="kbs-hint" style={{ height: "100%", width: "40%", background: C.gold, borderRadius: 4 }} />
+      </div>
+    </div>
+  );
+}
+
+function DiagnosticForm({ form, setForm, onSave, onLaunch, saving, launching, savedMsg, complete }) {
+  if (!form) return null;
+  const set = (k) => (v) => setForm({ ...form, [k]: v });
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ fontSize: 11.5, color: C.muted }}>Remplis la fiche puis lance le diagnostic IA. Le déclenchement est <b>manuel</b> et payant : rien ne se lance à l'enregistrement.</div>
+
+      <FormGroup title="Identité">
+        <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ flex: 1 }}><DField label="Nom" value={form.nom} onChange={set("nom")} /></div>
+          <div style={{ flex: 1 }}><DField label="Prénom" value={form.prenom} onChange={set("prenom")} /></div>
+        </div>
+        <DField label="Numéro WhatsApp" value={form.whatsapp} onChange={set("whatsapp")} />
+        <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ flex: 1 }}><DField label="Quartier / Ville" value={form.quartierVille} onChange={set("quartierVille")} /></div>
+          <div style={{ flex: 1 }}><DField label="Marque / entreprise" value={form.marque} onChange={set("marque")} placeholder="si différent du nom" /></div>
+        </div>
+      </FormGroup>
+
+      <FormGroup title="Business">
+        <DField label="Niche / secteur *" value={form.niche} onChange={set("niche")} placeholder="ex : cosmétique visage, vêtements enfants" />
+        <DField label="Description courte du business *" value={form.descriptionBusiness} onChange={set("descriptionBusiness")} area placeholder="2-3 phrases" />
+        <DField label="Catalogue produits / services" value={form.catalogue} onChange={set("catalogue")} area placeholder="une ligne par produit" />
+        <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ flex: 1 }}><DField label="Panier moyen (FCFA)" value={form.panierMoyen} onChange={set("panierMoyen")} type="number" /></div>
+          <div style={{ flex: 1 }}><DField label="Budget pub mensuel" value={form.budgetPubActuel} onChange={set("budgetPubActuel")} placeholder="FCFA ou « aucun »" /></div>
+        </div>
+      </FormGroup>
+
+      <FormGroup title="Présence digitale">
+        <DField label="Lien TikTok" value={form.tiktok} onChange={set("tiktok")} placeholder="optionnel" />
+        <DField label="Lien page Facebook" value={form.facebook} onChange={set("facebook")} placeholder="optionnel" />
+        <DField label="Lien Instagram" value={form.instagram} onChange={set("instagram")} placeholder="optionnel" />
+        <DField label="Abonnés approx. par plateforme" value={form.abonnes} onChange={set("abonnes")} placeholder="ex : TikTok 2k, FB 800" />
+        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+          <label style={{ fontSize: 11, color: C.muted }}>A-t-il déjà vendu en ligne ?</label>
+          <select value={form.dejaVenduEnLigne} onChange={e => set("dejaVenduEnLigne")(e.target.value)} style={inputStyle}>
+            <option value="non">Non</option>
+            <option value="oui">Oui</option>
+          </select>
+        </div>
+        {form.dejaVenduEnLigne === "oui" && <DField label="Détails / volume / résultat" value={form.detailsVentes} onChange={set("detailsVentes")} area />}
+        <DField label="Dernière activité sur la page" value={form.derniereActivite} onChange={set("derniereActivite")} placeholder="date approximative (page inactive ?)" />
+      </FormGroup>
+
+      <FormGroup title="Diagnostic">
+        <DField label="Cible / clientèle actuelle (selon le client)" value={form.cibleActuelle} onChange={set("cibleActuelle")} area />
+        <DField label="Problème perçu par le client *" value={form.problemePercu} onChange={set("problemePercu")} area placeholder="ce qu'il PENSE être son problème" />
+        <DField label="Objectifs à 30 jours *" value={form.objectifs30j} onChange={set("objectifs30j")} area />
+        <DField label="Objectifs long terme (3-6 mois)" value={form.objectifsLongTerme} onChange={set("objectifsLongTerme")} area />
+        <DField label="Concurrents déjà connus du client" value={form.concurrentsConnus} onChange={set("concurrentsConnus")} area />
+      </FormGroup>
+
+      <FormGroup title="Photos">
+        <PhotoField label="Photo du client / de la boutique" value={form.photoClient} onChange={set("photoClient")} />
+        <PhotoField label="Capture de sa page actuelle (optionnel)" value={form.photoPage} onChange={set("photoPage")} />
+      </FormGroup>
+
+      <FormGroup title="Notes internes KBS (jamais exportées au client)">
+        <DField label="Impression du commercial après le RDV" value={form.noteCommercial} onChange={set("noteCommercial")} area />
+        <DField label="Budget réel estimé (FCFA)" value={form.budgetReelEstime} onChange={set("budgetReelEstime")} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+          <label style={{ fontSize: 11, color: C.muted }}>Niveau d'urgence</label>
+          <select value={form.niveauUrgence} onChange={e => set("niveauUrgence")(e.target.value)} style={inputStyle}>
+            <option>Faible</option><option>Moyen</option><option>Élevé</option>
+          </select>
+        </div>
+      </FormGroup>
+
+      {savedMsg && <div style={{ fontSize: 12, color: savedMsg.startsWith("Erreur") ? C.rustLight : C.greenLight }}>{savedMsg}</div>}
+
+      <div style={{ display: "flex", gap: 8 }}>
+        <button onClick={onSave} disabled={saving} style={{ ...iconBtn, flex: 1, padding: "10px", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: saving ? 0.6 : 1 }}>
+          <Save size={14} /> {saving ? "Enregistrement…" : "Enregistrer la fiche"}
+        </button>
+        <button onClick={onLaunch} disabled={launching || !complete} title={complete ? "" : "Complète les champs obligatoires (*)"}
+          style={{ ...btnGold, flex: 1, opacity: (launching || !complete) ? 0.5 : 1, cursor: (launching || !complete) ? "not-allowed" : "pointer" }}>
+          <Sparkles size={14} /> {launching ? "Lancement…" : "Lancer le diagnostic IA"}
+        </button>
+      </div>
+      <div style={{ fontSize: 11, color: C.muted, textAlign: "center" }}>Génération ≈ 0,50 à 1,50 $ · facturation Anthropic à l'usage · un seul lancement à la fois.</div>
+    </div>
+  );
+}
+
+function FormGroup({ title, children }) {
+  return (
+    <div style={{ background: C.cardAlt, borderRadius: 10, padding: 12 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: C.goldLight, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 8 }}>{title}</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{children}</div>
+    </div>
+  );
+}
+
+function InteractiveGuide({ diag, prospect, agency, onToggle, onEditForm, onRelaunch, launching }) {
+  const g = diag.guideContent || {};
+  const p = diag.programJson || {};
+  const r = diag.researchData || {};
+  const prog = guideProgress(diag);
+  const [openResearch, setOpenResearch] = useState(false);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {/* Barre de progression globale */}
+      <div style={{ background: C.cardAlt, borderRadius: 12, padding: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+          <span style={{ fontSize: 12, fontWeight: 700 }}>Progression du programme ({p.durationDays || 30} jours)</span>
+          <span style={{ fontSize: 12, fontWeight: 800, color: C.goldLight }}>{prog.done}/{prog.total} · {prog.pct}%</span>
+        </div>
+        <div style={{ height: 8, background: C.border, borderRadius: 6, overflow: "hidden" }}>
+          <div style={{ height: "100%", width: `${prog.pct}%`, background: C.gold, borderRadius: 6, transition: "width .3s" }} />
+        </div>
+      </div>
+
+      {/* Diagnostic */}
+      {g.positioning && <GuideBlock label="Positionnement" text={g.positioning} />}
+      {(g.perceivedProblem || g.realProblem) && (
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.goldLight, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 6 }}>Le vrai problème</div>
+          {g.perceivedProblem && <div style={{ fontSize: 12.5, marginBottom: 6 }}><span style={{ color: C.muted }}>Perçu : </span>{g.perceivedProblem}</div>}
+          {g.realProblem && <div style={{ fontSize: 12.5, background: C.cardAlt, borderRadius: 8, padding: 10 }}><span style={{ color: C.gold, fontWeight: 700 }}>Réel : </span>{g.realProblem}</div>}
+        </div>
+      )}
+
+      {(g.personas || []).length > 0 && (
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.goldLight, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 8 }}>Personas</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {g.personas.map((per, i) => (
+              <div key={i} style={{ background: C.cardAlt, borderRadius: 8, padding: 10 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700 }}>{per.name}</div>
+                {per.description && <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{per.description}</div>}
+                {(per.pains || []).length > 0 && <div style={{ fontSize: 11.5, marginTop: 4 }}>😣 {per.pains.join(" · ")}</div>}
+                {(per.desires || []).length > 0 && <div style={{ fontSize: 11.5, marginTop: 2 }}>✨ {per.desires.join(" · ")}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {(g.angles || []).length > 0 && (
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.goldLight, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 8 }}>Angles marketing</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {g.angles.map((a, i) => (
+              <div key={i} style={{ background: C.cardAlt, borderRadius: 8, padding: 10 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700 }}>{a.title}</div>
+                {a.example && <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>{a.example}</div>}
+                {a.hook && <div style={{ fontSize: 12, marginTop: 4, fontStyle: "italic", color: C.goldLight }}>« {a.hook} »</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {(p.kpis || []).length > 0 && (
+        <GuideBlock label="KPI à suivre" text={p.kpis.map(k => `• ${k}`).join("\n")} />
+      )}
+
+      {/* Rail des jours */}
+      {(p.days || []).length > 0 && (
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.goldLight, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 8 }}>Programme jour par jour</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {p.days.map((d, i) => (
+              <div key={i} style={{ background: C.cardAlt, borderRadius: 8, padding: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                  <span style={{ background: C.gold, color: "#fff", fontSize: 11, fontWeight: 800, borderRadius: 6, padding: "2px 8px" }}>J{d.day}</span>
+                  <span style={{ fontSize: 12.5, fontWeight: 700 }}>{d.theme}</span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {(d.tasks || []).map(t => {
+                    const done = !!(diag.checklistProgress || {})[t.id];
+                    return (
+                      <div key={t.id} onClick={() => onToggle(t.id)} style={{ display: "flex", alignItems: "flex-start", gap: 7, cursor: "pointer", fontSize: 12.5 }}>
+                        {done ? <CheckCircle2 size={16} color={C.greenLight} style={{ flexShrink: 0, marginTop: 1 }} /> : <Circle size={16} color={C.muted} style={{ flexShrink: 0, marginTop: 1 }} />}
+                        <span style={{ textDecoration: done ? "line-through" : "none", color: done ? C.muted : C.text }}>{t.label}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Concurrents analyses (repliable) */}
+      {(r.competitors || []).length > 0 && (
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
+          <div onClick={() => setOpenResearch(o => !o)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: C.goldLight, textTransform: "uppercase", letterSpacing: 0.4 }}>Concurrents analysés ({r.competitors.length})</span>
+            {openResearch ? <ChevronDown size={14} color={C.gold} /> : <ChevronRight size={14} color={C.gold} />}
+          </div>
+          {openResearch && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+              {r.summary && <div style={{ fontSize: 12, color: C.muted, marginBottom: 4 }}>{r.summary}</div>}
+              {r.competitors.map((c, i) => (
+                <div key={i} style={{ background: C.cardAlt, borderRadius: 8, padding: 8, fontSize: 11.5 }}>
+                  <div style={{ fontWeight: 700 }}>{c.name} <span style={{ color: C.muted, fontWeight: 400 }}>· {c.platform} · {c.followers}</span></div>
+                  {c.angle && <div style={{ color: C.muted, marginTop: 2 }}>Angle : {c.angle}</div>}
+                  {c.whyItWorks && <div style={{ marginTop: 2 }}>👍 {c.whyItWorks}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Actions */}
+      <button onClick={() => generateGuidePDF(diag, prospect, agency)} style={{ ...btnGold }}>
+        <FileText size={14} /> Exporter le guide en PDF
+      </button>
+      {prospect.whatsapp ? (
+        <a href={whatsappGuideLink(prospect, diag)} target="_blank" rel="noopener noreferrer" style={{ ...iconBtn, textDecoration: "none", padding: "10px", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, color: C.greenLight, borderColor: C.green }}>
+          <Send size={14} /> Envoyer sur WhatsApp
+        </a>
+      ) : (
+        <div style={{ fontSize: 11.5, color: C.muted, background: C.cardAlt, borderRadius: 8, padding: 10 }}>Ajoute un numéro WhatsApp au client pour activer l'envoi.</div>
+      )}
+      <div style={{ fontSize: 11, color: C.muted, background: C.cardAlt, borderRadius: 8, padding: 10 }}>
+        ⚠️ WhatsApp ne peut pas joindre le PDF automatiquement : le lien pré-remplit seulement un texte. Télécharge d'abord le PDF, puis joins-le manuellement dans WhatsApp.
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
+        <button onClick={onEditForm} style={{ ...iconBtn, flex: 1, padding: "8px" }}>Modifier la fiche</button>
+        <button onClick={onRelaunch} disabled={launching} style={{ ...iconBtn, flex: 1, padding: "8px", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: launching ? 0.6 : 1 }}>
+          <RefreshCw size={13} /> Relancer (payant)
+        </button>
+      </div>
+      {diag.generationCostEstimate ? <div style={{ fontSize: 10.5, color: C.muted, textAlign: "center" }}>Coût estimé de cette génération : ≈ {Number(diag.generationCostEstimate).toFixed(2)} $</div> : null}
+    </div>
+  );
+}
+
+function GuideBlock({ label, text }) {
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: C.goldLight, textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 6 }}>{label}</div>
+      <div style={{ fontSize: 12.5, whiteSpace: "pre-wrap" }}>{text}</div>
+    </div>
+  );
+}
+
+/* ---------------------------------- ADMIN : SUIVI DES DIAGNOSTICS IA ---------------------------------- */
+function AdminDiagnostics() {
+  const [list, setList] = useState(null);
+  const [rawId, setRawId] = useState(null);
+
+  async function refresh() {
+    setList(null);
+    const all = await loadAllDiagnostics();
+    all.sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
+    setList(all);
+  }
+  useEffect(() => { refresh(); }, []);
+
+  const now = new Date();
+  const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const monthCost = (list || []).reduce((s, d) => {
+    const ref = d.completedAt || d.updatedAt || "";
+    return ref.startsWith(ym) ? s + (Number(d.generationCostEstimate) || 0) : s;
+  }, 0);
+  const totalCost = (list || []).reduce((s, d) => s + (Number(d.generationCostEstimate) || 0), 0);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <H2>Diagnostics IA</H2>
+        <button onClick={refresh} style={{ ...iconBtn, display: "flex", alignItems: "center", gap: 5, padding: "6px 10px" }}><RefreshCw size={13} /> Rafraîchir</button>
+      </div>
+
+      <div style={{ display: "flex", gap: 10 }}>
+        <Card style={{ flex: 1, textAlign: "center" }}>
+          <div style={{ fontSize: 11, color: C.muted }}>Coût ce mois-ci</div>
+          <div style={{ fontWeight: 800, fontFamily: "Sora, sans-serif", color: C.goldLight }}>≈ {monthCost.toFixed(2)} $</div>
+        </Card>
+        <Card style={{ flex: 1, textAlign: "center" }}>
+          <div style={{ fontSize: 11, color: C.muted }}>Coût cumulé</div>
+          <div style={{ fontWeight: 800, fontFamily: "Sora, sans-serif", color: C.greenLight }}>≈ {totalCost.toFixed(2)} $</div>
+        </Card>
+      </div>
+
+      {list === null && <div style={{ fontSize: 12, color: C.muted, textAlign: "center", padding: 16 }}>Chargement…</div>}
+      {list !== null && list.length === 0 && <div style={{ fontSize: 12.5, color: C.muted, textAlign: "center", padding: 16 }}>Aucun diagnostic pour l'instant. Ouvre la fiche d'un client dans le CRM pour en créer un.</div>}
+
+      {(list || []).map(d => (
+        <Card key={d.clientId}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 13.5 }}>{d.clientNom || `Client ${d.clientId}`}</div>
+              <div style={{ fontSize: 11.5, color: C.muted, marginTop: 2 }}>
+                {d.formData?.niche ? `Niche : ${d.formData.niche} · ` : ""}Maj : {(d.updatedAt || "").slice(0, 16).replace("T", " ")}
+              </div>
+            </div>
+            <StatusPill status={d.status} />
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+            <div style={{ fontSize: 11.5, color: C.muted }}>
+              {d.generationCostEstimate ? `Coût : ≈ ${Number(d.generationCostEstimate).toFixed(2)} $` : "—"}
+              {d.programJson?.durationDays ? ` · ${d.programJson.durationDays} j` : ""}
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              {d.researchData && <button onClick={() => setRawId(rawId === d.clientId ? null : d.clientId)} style={{ ...iconBtn, padding: "5px 9px", fontSize: 11 }}>{rawId === d.clientId ? "Masquer" : "Données brutes"}</button>}
+            </div>
+          </div>
+          {d.status === "failed" && d.errorMessage && <div style={{ fontSize: 11.5, color: C.rustLight, marginTop: 6 }}>Erreur : {d.errorMessage}</div>}
+          {rawId === d.clientId && (
+            <pre style={{ marginTop: 8, background: C.cardAlt, borderRadius: 8, padding: 10, fontSize: 10.5, overflowX: "auto", maxHeight: 260, whiteSpace: "pre-wrap" }}>
+              {JSON.stringify(d.researchData, null, 2)}
+            </pre>
+          )}
+        </Card>
+      ))}
+      <div style={{ fontSize: 11, color: C.muted, textAlign: "center" }}>Les guides et leur progression se consultent dans la fiche de chaque client (CRM & Clients).</div>
     </div>
   );
 }
@@ -3334,6 +4035,8 @@ function TabAdministration({ section, caisse, setCaisse, team, setTeam, codes, s
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {section === "adminDiagnostics" && <AdminDiagnostics />}
+
       {section === "adminEquipe" && (<>
       <div>
         <H2>Équipe actuelle ({team.length})</H2>
