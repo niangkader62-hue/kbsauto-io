@@ -27,9 +27,19 @@ self.addEventListener('push', (event) => {
     body: data.body || '',
     icon: '/icon-192.png',
     badge: '/icon-192.png',
-    data: { url: data.url || '/' },
+    data: { url: data.url || '/', tabId: data.tabId || '' },
+    vibrate: [200, 100, 200],   // Buzz facon WhatsApp
+    tag: 'kbsauto',
+    renotify: true,             // Re-sonne meme si une notif est deja affichee
   };
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil((async () => {
+    await self.registration.showNotification(title, options);
+    // Previent l'appli ouverte (pour jouer le son interne + mettre a jour la pastille).
+    const clientList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of clientList) {
+      client.postMessage({ type: 'kbs-push', title: title, body: options.body, url: options.data.url, tabId: options.data.tabId });
+    }
+  })());
 });
 
 // Clic sur la notification : ouvre l'appli directement sur le bon onglet
