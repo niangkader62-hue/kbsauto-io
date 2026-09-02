@@ -1268,6 +1268,18 @@ export default function App() {
     setPeriod(currentMonth());
   }
 
+  // Cloture manuelle d'un mois (CEO) : archive les chiffres actuels sous le mois choisi
+  // (ex. "2026-08" pour Aout) puis remet a zero les compteurs du mois. Ne touche ni a
+  // l'equipe, ni aux tarifs, ni au Kanban : seulement CA/clients, tresorerie, dettes.
+  function closeMonthManually(monthLabel) {
+    const label = monthLabel || period || currentMonth();
+    archiveMonth(label);
+    setProspects([]);
+    setExpenses([]);
+    setDettes([]);
+    setPeriod(currentMonth());
+  }
+
   const TAB_META = {
     objectif: { label: "Objectif", icon: Target },
     dispos: { label: "Planning", icon: CalendarCheck },
@@ -1434,7 +1446,7 @@ export default function App() {
             {tab === "formation" && <TabFormation team={team} codes={codes} guides={guides} formationLiens={formationLiens} />}
           </>
         )}
-        {category === "admin" && <TabAdministration section={tab} caisse={caisse} setCaisse={setCaisse} team={team} setTeam={setTeam} codes={codes} setCodes={setCodes} onResetAll={resetAllData} agency={agency} setAgency={setAgency} guides={guides} setGuides={setGuides} formationLiens={formationLiens} setFormationLiens={setFormationLiens} pricing={pricing} setPricing={setPricing} commissionRate={commissionRate} setCommissionRate={setCommissionRate} />}
+        {category === "admin" && <TabAdministration section={tab} caisse={caisse} setCaisse={setCaisse} team={team} setTeam={setTeam} codes={codes} setCodes={setCodes} onResetAll={resetAllData} onCloseMonth={closeMonthManually} currentMonth={currentMonth()} agency={agency} setAgency={setAgency} guides={guides} setGuides={setGuides} formationLiens={formationLiens} setFormationLiens={setFormationLiens} pricing={pricing} setPricing={setPricing} commissionRate={commissionRate} setCommissionRate={setCommissionRate} />}
       </div>
       </div>
       )}
@@ -4180,8 +4192,13 @@ function ArchStat({ label, value, color }) {
   );
 }
 
-function TabAdministration({ section, caisse, setCaisse, team, setTeam, codes, setCodes, onResetAll, agency, setAgency, guides, setGuides, formationLiens, setFormationLiens, pricing, setPricing, commissionRate, setCommissionRate }) {
+function TabAdministration({ section, caisse, setCaisse, team, setTeam, codes, setCodes, onResetAll, onCloseMonth, currentMonth, agency, setAgency, guides, setGuides, formationLiens, setFormationLiens, pricing, setPricing, commissionRate, setCommissionRate }) {
   const [adminUnlocked, setAdminUnlocked] = useState(false);
+  // Mois a archiver par defaut = le mois precedent (ex. aujourd'hui septembre -> "2026-08").
+  const prevMonth = (() => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 7); })();
+  const [closeMonthValue, setCloseMonthValue] = useState(prevMonth);
+  const [closeMonthStep, setCloseMonthStep] = useState(false);
+  const [closeMonthDone, setCloseMonthDone] = useState(false);
   const [form, setForm] = useState({ name: "", role: "", checklistText: "" });
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({ name: "", role: "", checklistText: "", code: "", commissionPct: "" });
@@ -4518,6 +4535,39 @@ function TabAdministration({ section, caisse, setCaisse, team, setTeam, codes, s
       {section === "adminCaisse" && <TabCaissePerso caisse={caisse} setCaisse={setCaisse} />}
 
       {section === "adminReset" && (<>
+      <div>
+        <H2>Clôturer un mois</H2>
+        <Card style={{ borderColor: C.green }}>
+          <Eyebrow>Archiver le mois puis repartir à zéro</Eyebrow>
+          <div style={{ fontSize: 12.5, color: C.muted, marginTop: 4 }}>
+            Les chiffres actuels (clients &amp; CA, trésorerie &amp; dépenses, dettes, objectif atteint) sont <b style={{ color: C.greenLight }}>sauvegardés dans les Archives sous le mois choisi</b>, puis les compteurs du mois repartent à zéro. L'équipe, les tarifs et le Kanban ne sont pas touchés.
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
+            <label style={{ fontSize: 12, color: C.muted }}>Mois à archiver :</label>
+            <input type="month" value={closeMonthValue} max={currentMonth}
+              onChange={e => { setCloseMonthValue(e.target.value); setCloseMonthStep(false); }}
+              style={{ ...inputStyle, width: 160 }} />
+          </div>
+          {!closeMonthStep ? (
+            <button onClick={() => { setCloseMonthStep(true); setCloseMonthDone(false); }} style={{ ...btnGold, marginTop: 10, background: C.green }}>
+              <Archive size={14} /> Clôturer ce mois
+            </button>
+          ) : (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: 12, color: C.greenLight, fontWeight: 700, marginBottom: 6 }}>
+                Confirmer : archiver les chiffres actuels sous « {closeMonthValue} » et remettre le mois en cours à zéro ?
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button onClick={() => { onCloseMonth(closeMonthValue); setCloseMonthStep(false); setCloseMonthDone(true); setTimeout(() => setCloseMonthDone(false), 3000); }}
+                  style={{ ...btnGold, width: "auto", padding: "8px 14px", background: C.green }}>Oui, archiver et remettre à zéro</button>
+                <button onClick={() => setCloseMonthStep(false)} style={iconBtn}>Annuler</button>
+              </div>
+            </div>
+          )}
+          {closeMonthDone && <div style={{ fontSize: 12, color: C.greenLight, marginTop: 8 }}>✓ Mois archivé. Consulte-le dans Ventes &amp; Finance → Archives.</div>}
+        </Card>
+      </div>
+
       <div>
         <H2>Zone dangereuse</H2>
         <Card style={{ borderColor: C.rust }}>
