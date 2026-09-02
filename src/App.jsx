@@ -8,7 +8,8 @@ import {
   CheckCircle2, Circle, RotateCcw, TrendingUp, Banknote, Flame, GraduationCap,
   Award, TrendingDown, Lock, LogOut, CalendarClock, Send, History, FileText,
   Shield, UserPlus, AlertTriangle, Search, Copy, Radar, CalendarCheck,
-  Pencil, Save, KeyRound, RefreshCw, X, MapPin, BookOpen, Bell, Eye, EyeOff
+  Pencil, Save, KeyRound, RefreshCw, X, MapPin, BookOpen, Bell, Eye, EyeOff,
+  Archive, Percent
 } from "lucide-react";
 
 /* ---------------------------------- SUPABASE ---------------------------------- */
@@ -25,7 +26,7 @@ const C = {
   white: "#FFFFFF", black: "#0D0D0D",
 };
 
-const FONT_IMPORT = `@import url('https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap');
+const FONT_IMPORT = `@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Nunito:wght@400;500;600;700;800;900&display=swap');
 .kbs-navbar::-webkit-scrollbar { height: 0; display: none; }
 .kbs-navbar { scrollbar-width: none; -ms-overflow-style: none; }
 @keyframes kbsSwipeHint { 0%, 100% { opacity: .45; transform: translateX(0); } 50% { opacity: 1; transform: translateX(4px); } }
@@ -215,7 +216,7 @@ const WEEKS = [
   { title: "Semaine 4 — Optimisation & encaissement", tasks: [
     "Sacko : analyser les statistiques des vidéos avec le CEO.",
     "Catherine : faire le point trésorerie, vérifier si l'objectif 250 000 FCFA est atteint.",
-    "CEO : distribuer les premières commissions de 25 %.",
+    "CEO : distribuer les premières commissions de l'équipe (selon le taux officiel).",
   ]},
 ];
 
@@ -924,9 +925,27 @@ function Eyebrow({ children }) {
   return <div style={{ color: C.gold, fontSize: 11, letterSpacing: 1.5, fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>{children}</div>;
 }
 function H2({ children, style }) {
-  return <h2 style={{ fontFamily: "Sora, sans-serif", fontSize: 20, fontWeight: 800, color: C.text, margin: "0 0 12px", ...style }}>{children}</h2>;
+  return <h2 style={{ fontFamily: "Baloo 2, sans-serif", fontSize: 20, fontWeight: 800, color: C.text, margin: "0 0 12px", ...style }}>{children}</h2>;
 }
 function fcfa(n) { return `${Number(n || 0).toLocaleString("fr-FR")} FCFA`; }
+
+/* --- Commissions : taux officiel global + taux individuel par membre --- */
+const DEFAULT_COMMISSION_RATE = 10; // Taux officiel (%), modifiable par le CEO
+// Taux applique a un client selon la personne qui le suit (owner).
+// Si le membre a un taux perso, on l'utilise ; sinon on retombe sur le taux officiel.
+function memberRate(team, ownerId, fallback) {
+  const m = (team || []).find(x => x.id === ownerId);
+  const v = m && m.commissionPct != null && m.commissionPct !== "" ? Number(m.commissionPct) : fallback;
+  return Number.isFinite(v) ? v : fallback;
+}
+// Commission d'un client = montant paye * taux de la personne qui le suit.
+function commissionOf(prospect, team, fallback) {
+  return (Number(prospect.montant) || 0) * (memberRate(team, prospect.owner, fallback) / 100);
+}
+// Somme des commissions de tous les clients.
+function totalCommissionOf(prospects, team, fallback) {
+  return (prospects || []).reduce((s, p) => s + commissionOf(p, team, fallback), 0);
+}
 
 /* Champ de code masque par defaut (points), revelable via l'icone oeil. */
 function CodeInput({ value, onChange, placeholder, style }) {
@@ -1101,13 +1120,24 @@ export default function App() {
   const [formationLiens, setFormationLiens] = useState({});
   const [ressourcesUnlocked, setRessourcesUnlocked] = useState(false);
   const [pricing, setPricing] = useState(DEFAULT_PRICING);
+  const [commissionRate, setCommissionRate] = useState(DEFAULT_COMMISSION_RATE); // Taux officiel (%)
+  const [archives, setArchives] = useState([]);   // Historique fige, un element par mois cloture
+  const [period, setPeriod] = useState("");        // Mois en cours "AAAA-MM"
 
   useEffect(() => {
     (async () => {
       // Filet de securite : tout membre enregistre sans code personnel en recoit un
       // automatiquement, sinon sa checklist et sa Formation resteraient inaccessibles.
+      const loadedRate = await loadShared("kbs:commissionRate", DEFAULT_COMMISSION_RATE);
+      const rate = Number.isFinite(Number(loadedRate)) ? Number(loadedRate) : DEFAULT_COMMISSION_RATE;
+      setCommissionRate(rate);
       const loadedTeam = await loadShared("kbs:team", DEFAULT_TEAM);
-      setTeam((loadedTeam || []).map(m => m.code ? m : { ...m, code: autoCode(m.name) }));
+      // Filet de securite code perso + taux de commission perso par defaut (taux officiel).
+      setTeam((loadedTeam || []).map(m => ({
+        ...m,
+        code: m.code || autoCode(m.name),
+        commissionPct: m.commissionPct != null && m.commissionPct !== "" ? m.commissionPct : rate,
+      })));
       setGoal(await loadShared("kbs:goal", 250000));
       setProspects(await loadShared("kbs:prospects", []));
       setKanban(await loadShared("kbs:kanban", { todo: [], doing: [], review: [], done: [] }));
@@ -1124,6 +1154,8 @@ export default function App() {
       setGuides(await loadShared("kbs:guides", DEFAULT_GUIDES));
       setFormationLiens(await loadShared("kbs:formationLiens", {}));
       setPricing({ ...DEFAULT_PRICING, ...(await loadShared("kbs:pricing", DEFAULT_PRICING)) });
+      setArchives(await loadShared("kbs:archives", []));
+      setPeriod(await loadShared("kbs:period", ""));
       setLoaded(true);
     })();
   }, []);
@@ -1154,16 +1186,74 @@ export default function App() {
   useEffect(() => { if (loaded) persist("kbs:guides", guides); }, [guides, loaded]);
   useEffect(() => { if (loaded) persist("kbs:formationLiens", formationLiens); }, [formationLiens, loaded]);
   useEffect(() => { if (loaded) persist("kbs:pricing", pricing); }, [pricing, loaded]);
+  useEffect(() => { if (loaded) persist("kbs:commissionRate", commissionRate); }, [commissionRate, loaded]);
+  useEffect(() => { if (loaded) persist("kbs:archives", archives); }, [archives, loaded]);
+  useEffect(() => { if (loaded) persist("kbs:period", period); }, [period, loaded]);
 
   const totalCA = useMemo(() => prospects.reduce((s, p) => s + (Number(p.montant) || 0), 0), [prospects]);
   const servicesCatalogue = useMemo(() => buildServicesCatalogue(pricing), [pricing]);
   const allServicesFlat = useMemo(() => buildAllServicesFlat(pricing), [pricing]);
-  const totalCommission = totalCA * 0.25;
+  const totalCommission = useMemo(() => totalCommissionOf(prospects, team, commissionRate), [prospects, team, commissionRate]);
   const totalDepenses = useMemo(() => expenses.reduce((s, e) => s + (Number(e.montant) || 0), 0), [expenses]);
   const beneficeNet = totalCA - totalCommission - totalDepenses;
   const pct = Math.min(100, Math.round((totalCA / (goal || 1)) * 100));
 
+  // ------- Archives mensuelles -------
+  const currentMonth = () => new Date().toISOString().slice(0, 7); // "AAAA-MM"
+
+  // Photographie figee du mois : clients & CA, tresorerie & depenses, dettes, objectif atteint.
+  function buildSnapshot(periodLabel) {
+    const byMember = team.map(m => {
+      const mine = prospects.filter(p => p.owner === m.id);
+      const ca = mine.reduce((s, p) => s + (Number(p.montant) || 0), 0);
+      const rate = memberRate(team, m.id, commissionRate);
+      return { id: m.id, name: m.name, color: m.color, rate, ca, commission: ca * rate / 100, clients: mine.length };
+    });
+    return {
+      id: `${periodLabel}-${Date.now()}`,
+      period: periodLabel,
+      closedAt: new Date().toISOString(),
+      goal, commissionRate,
+      totalCA, totalCommission, totalDepenses, beneficeNet,
+      pctObjectif: Math.min(100, Math.round((totalCA / (goal || 1)) * 100)),
+      clients: prospects, expenses, dettes, byMember,
+    };
+  }
+
+  // Archive le mois indique (sans rien effacer). Ne fait rien s'il n'y a aucune donnee.
+  // On empile les archives (jamais d'ecrasement) mais on ignore un instantane identique
+  // deja present (protege contre un double-appel, ex. React StrictMode en developpement).
+  function archiveMonth(periodLabel) {
+    const label = periodLabel || period || currentMonth();
+    if (!(prospects.length || expenses.length || dettes.length)) return;
+    const snap = buildSnapshot(label);
+    setArchives(prev => {
+      const exists = (prev || []).some(a =>
+        a.period === label && a.totalCA === snap.totalCA &&
+        (a.clients || []).length === snap.clients.length &&
+        (a.expenses || []).length === snap.expenses.length &&
+        (a.dettes || []).length === snap.dettes.length);
+      if (exists) return prev;
+      return [...(prev || []), snap].sort((a, b) => a.period.localeCompare(b.period));
+    });
+  }
+
+  // Bascule automatique de mois : on archive le mois ecoule puis on remet les compteurs a zero.
+  useEffect(() => {
+    if (!loaded) return;
+    const now = currentMonth();
+    if (!period) { setPeriod(now); return; }   // Tout premier lancement : on marque le mois courant.
+    if (period === now) return;                  // Toujours le meme mois : rien a faire.
+    archiveMonth(period);                        // Nouveau mois -> on fige le mois precedent...
+    setProspects([]);                            // ...puis on repart a zero pour le CA/commissions,
+    setExpenses([]);                             //    la tresorerie/depenses
+    setDettes([]);                               //    et les dettes.
+    setPeriod(now);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, period]);
+
   function resetAllData() {
+    archiveMonth(period || currentMonth()); // On garde une trace avant d'effacer.
     setProspects([]);
     setKanban({ todo: [], doing: [], review: [], done: [] });
     setChecks({});
@@ -1175,6 +1265,7 @@ export default function App() {
     setDispos({});
     setDevis([]);
     setGoal(250000);
+    setPeriod(currentMonth());
   }
 
   const TAB_META = {
@@ -1203,11 +1294,12 @@ export default function App() {
     adminCaisse: { label: "Caisse Perso", icon: Wallet },
     adminReset: { label: "Réinitialisation", icon: AlertTriangle },
     formation: { label: "Formation", icon: BookOpen },
+    archives: { label: "Archives", icon: Archive },
   };
 
   const CATEGORIES = [
     { id: "pilotage", label: "Pilotage", icon: Target, tabs: ["objectif", "dispos", "kanban"] },
-    { id: "ventes", label: "Ventes & Finance", icon: Wallet, tabs: ["crm", "devis", "tresorerie", "dettes", "tarifs"] },
+    { id: "ventes", label: "Ventes & Finance", icon: Wallet, tabs: ["crm", "devis", "tresorerie", "dettes", "tarifs", "archives"] },
     { id: "marketing", label: "Marketing", icon: Flame, tabs: ["cible", "copywriting", "prospection", "terrain"] },
     { id: "ressources", label: "Ressources", icon: Sparkles, tabs: ["outils", "academie", "plan", "liens", "formation"] },
     { id: "admin", label: "Administration", icon: Shield, tabs: ["adminEquipe", "adminDiagnostics", "adminCodes", "adminAgence", "adminTarifs", "adminFormation", "adminCaisse", "adminReset"] },
@@ -1229,7 +1321,7 @@ export default function App() {
   }, [loaded, unlocked]);
 
   return (
-    <div style={{ minHeight: "100vh", background: C.bg, color: C.text, fontFamily: "Inter, sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: C.bg, color: C.text, fontFamily: "Nunito, sans-serif" }}>
       <style>{FONT_IMPORT}</style>
 
       {!loaded ? (
@@ -1244,7 +1336,7 @@ export default function App() {
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <img src={`data:image/png;base64,${LOGO_B64}`} alt="KBSAUTO" style={{ width: 34, height: 34, borderRadius: 9, flexShrink: 0 }} />
             <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-              <span style={{ fontFamily: "Sora, sans-serif", fontWeight: 800, fontSize: 22, color: C.gold }}>KBSAUTO</span>
+              <span style={{ fontFamily: "Baloo 2, sans-serif", fontWeight: 800, fontSize: 22, color: C.gold }}>KBSAUTO</span>
             </div>
           </div>
           <div style={{ color: C.muted, fontSize: 12.5, marginTop: 2, marginLeft: 44 }}>KBS Digital Agency — QG de l'équipe</div>
@@ -1291,39 +1383,40 @@ export default function App() {
         })}
       </ScrollRow>
 
-      {/* SUB-TAB BAR — rangee defilante avec fleches cliquables */}
-      <div style={{ borderBottom: `1px solid ${C.border}` }}>
-        <ScrollRow gap={8} padding="4px 12px 12px">
+      {/* SUB-TAB BAR — tous les sous-onglets visibles d'un coup (retour a la ligne) */}
+      <div style={{ borderBottom: `1px solid ${C.border}`, padding: "6px 12px 12px" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
           {CATEGORIES.find(c => c.id === category).tabs.map(tid => {
             const meta = TAB_META[tid];
             const Icon = meta.icon;
             const active = tab === tid;
             return (
               <div key={tid} onClick={() => setTab(tid)} style={{
-                display: "flex", flexDirection: "column", alignItems: "center", gap: 5,
-                flexShrink: 0, width: 82, cursor: "pointer", scrollSnapAlign: "start",
-                padding: "8px 4px", borderRadius: 12,
+                display: "flex", alignItems: "center", gap: 6,
+                cursor: "pointer",
+                padding: "8px 12px", borderRadius: 999,
                 border: `1px solid ${active ? C.gold : C.border}`,
                 background: active ? "rgba(193,95,60,0.16)" : C.card,
                 transition: "all .18s ease",
               }}>
-                <Icon size={16} color={active ? C.goldLight : C.muted} />
-                <span style={{ fontSize: 10, fontWeight: 700, textAlign: "center", lineHeight: 1.25, color: active ? C.goldLight : C.muted }}>{meta.label}</span>
+                <Icon size={15} color={active ? C.goldLight : C.muted} />
+                <span style={{ fontSize: 12, fontWeight: 700, textAlign: "center", lineHeight: 1.2, color: active ? C.goldLight : C.muted }}>{meta.label}</span>
               </div>
             );
           })}
-        </ScrollRow>
+        </div>
       </div>
 
       <div className="kbs-content" style={{ padding: 16, maxWidth: 720, margin: "0 auto" }}>
-        {tab === "objectif" && <TabObjectif goal={goal} setGoal={setGoal} totalCA={totalCA} totalCommission={totalCommission} pct={pct} prospects={prospects} team={team} codes={codes} />}
+        {tab === "objectif" && <TabObjectif goal={goal} setGoal={setGoal} totalCA={totalCA} totalCommission={totalCommission} pct={pct} prospects={prospects} team={team} codes={codes} commissionRate={commissionRate} />}
         {tab === "dispos" && <TabDispos dispos={dispos} setDispos={setDispos} team={team} />}
         {tab === "kanban" && <TabKanban kanban={kanban} setKanban={setKanban} checks={checks} setChecks={setChecks} team={team} codes={codes} />}
-        {tab === "crm" && <TabCRM prospects={prospects} setProspects={setProspects} totalCA={totalCA} totalCommission={totalCommission} team={team} codes={codes} agency={agency} pricing={pricing} servicesCatalogue={servicesCatalogue} />}
+        {tab === "crm" && <TabCRM prospects={prospects} setProspects={setProspects} totalCA={totalCA} totalCommission={totalCommission} team={team} codes={codes} agency={agency} pricing={pricing} servicesCatalogue={servicesCatalogue} commissionRate={commissionRate} />}
         {tab === "devis" && <TabDevis devis={devis} setDevis={setDevis} prospects={prospects} team={team} agency={agency} />}
-        {tab === "tresorerie" && <TabTresorerie prospects={prospects} setProspects={setProspects} expenses={expenses} setExpenses={setExpenses} totalCA={totalCA} totalCommission={totalCommission} totalDepenses={totalDepenses} beneficeNet={beneficeNet} team={team} codes={codes} />}
+        {tab === "tresorerie" && <TabTresorerie prospects={prospects} setProspects={setProspects} expenses={expenses} setExpenses={setExpenses} totalCA={totalCA} totalCommission={totalCommission} totalDepenses={totalDepenses} beneficeNet={beneficeNet} team={team} codes={codes} commissionRate={commissionRate} />}
         {tab === "dettes" && <TabDettes dettes={dettes} setDettes={setDettes} prospects={prospects} />}
         {tab === "tarifs" && <TabTarifs pricing={pricing} />}
+        {tab === "archives" && <TabArchives archives={archives} period={period} team={team} />}
         {tab === "cible" && <TabCible />}
         {tab === "copywriting" && <TabCopywriting />}
         {tab === "prospection" && <TabProspection prospection={prospection} setProspection={setProspection} prospects={prospects} setProspects={setProspects} team={team} pricing={pricing} allServicesFlat={allServicesFlat} />}
@@ -1341,7 +1434,7 @@ export default function App() {
             {tab === "formation" && <TabFormation team={team} codes={codes} guides={guides} formationLiens={formationLiens} />}
           </>
         )}
-        {category === "admin" && <TabAdministration section={tab} caisse={caisse} setCaisse={setCaisse} team={team} setTeam={setTeam} codes={codes} setCodes={setCodes} onResetAll={resetAllData} agency={agency} setAgency={setAgency} guides={guides} setGuides={setGuides} formationLiens={formationLiens} setFormationLiens={setFormationLiens} pricing={pricing} setPricing={setPricing} />}
+        {category === "admin" && <TabAdministration section={tab} caisse={caisse} setCaisse={setCaisse} team={team} setTeam={setTeam} codes={codes} setCodes={setCodes} onResetAll={resetAllData} agency={agency} setAgency={setAgency} guides={guides} setGuides={setGuides} formationLiens={formationLiens} setFormationLiens={setFormationLiens} pricing={pricing} setPricing={setPricing} commissionRate={commissionRate} setCommissionRate={setCommissionRate} />}
       </div>
       </div>
       )}
@@ -1362,7 +1455,7 @@ function LoginScreen({ onUnlock, codes }) {
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <img src={`data:image/png;base64,${LOGO_B64}`} alt="KBSAUTO" style={{ width: 76, height: 76, borderRadius: 18, marginBottom: 16, boxShadow: `0 0 0 1px ${C.border}` }} />
-      <div style={{ fontFamily: "Sora, sans-serif", fontWeight: 800, fontSize: 22, marginBottom: 2 }}>KBSAUTO</div>
+      <div style={{ fontFamily: "Baloo 2, sans-serif", fontWeight: 800, fontSize: 22, marginBottom: 2 }}>KBSAUTO</div>
       <div style={{ color: C.muted, fontSize: 12.5, marginBottom: 16 }}>KBS Digital Agency</div>
       <div style={{ color: C.muted, fontSize: 13, marginBottom: 20, textAlign: "center" }}>Accès réservé à l'équipe — entre le code d'accès</div>
       <div style={{ width: "100%", maxWidth: 280, display: "flex", flexDirection: "column", gap: 10 }}>
@@ -1383,13 +1476,14 @@ function LoginScreen({ onUnlock, codes }) {
 }
 
 /* ---------------------------------- TAB: OBJECTIF ---------------------------------- */
-function TabObjectif({ goal, setGoal, totalCA, totalCommission, pct, prospects, team, codes }) {
+function TabObjectif({ goal, setGoal, totalCA, totalCommission, pct, prospects, team, codes, commissionRate }) {
   const [ceoUnlocked, setCeoUnlocked] = useState(false);
   const r = 70, circ = 2 * Math.PI * r;
-  const perPerson = team.map(m => ({
-    ...m,
-    ca: prospects.filter(p => p.owner === m.id).reduce((s, p) => s + (Number(p.montant) || 0), 0),
-  }));
+  const perPerson = team.map(m => {
+    const ca = prospects.filter(p => p.owner === m.id).reduce((s, p) => s + (Number(p.montant) || 0), 0);
+    const rate = memberRate(team, m.id, commissionRate);
+    return { ...m, ca, rate, commission: ca * rate / 100 };
+  });
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -1402,7 +1496,7 @@ function TabObjectif({ goal, setGoal, totalCA, totalCommission, pct, prospects, 
               strokeDasharray={circ} strokeDashoffset={circ - (pct / 100) * circ} strokeLinecap="round" />
           </svg>
           <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-            <div style={{ fontFamily: "Sora, sans-serif", fontSize: 30, fontWeight: 800, color: C.goldLight }}>{pct}%</div>
+            <div style={{ fontFamily: "Baloo 2, sans-serif", fontSize: 30, fontWeight: 800, color: C.goldLight }}>{pct}%</div>
             <div style={{ fontSize: 11, color: C.muted }}>de l'objectif</div>
           </div>
         </div>
@@ -1419,9 +1513,9 @@ function TabObjectif({ goal, setGoal, totalCA, totalCommission, pct, prospects, 
       </Card>
 
       <Card>
-        <Eyebrow>Commission d'équipe (25%)</Eyebrow>
-        <div style={{ fontFamily: "Sora, sans-serif", fontSize: 24, fontWeight: 800, color: C.greenLight }}>{fcfa(totalCommission)}</div>
-        <div style={{ color: C.muted, fontSize: 12.5, marginTop: 2 }}>Calculée automatiquement sur le CA encaissé dans le CRM.</div>
+        <Eyebrow>Commission d'équipe (taux officiel {commissionRate}%)</Eyebrow>
+        <div style={{ fontFamily: "Baloo 2, sans-serif", fontSize: 24, fontWeight: 800, color: C.greenLight }}>{fcfa(totalCommission)}</div>
+        <div style={{ color: C.muted, fontSize: 12.5, marginTop: 2 }}>Calculée automatiquement sur le CA encaissé, selon le pourcentage de chaque personne. Modifiable dans Administration → Équipe.</div>
       </Card>
 
       <Card>
@@ -1430,12 +1524,13 @@ function TabObjectif({ goal, setGoal, totalCA, totalCommission, pct, prospects, 
           {perPerson.map(m => (
             <div key={m.id}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
-                <span style={{ fontWeight: 600 }}>{m.name}</span>
+                <span style={{ fontWeight: 600 }}>{m.name} <span style={{ color: C.muted, fontWeight: 500, fontSize: 11 }}>· {m.rate}%</span></span>
                 <span style={{ color: C.muted }}>{fcfa(m.ca)}</span>
               </div>
               <div style={{ height: 6, background: C.cardAlt, borderRadius: 4, overflow: "hidden" }}>
                 <div style={{ height: "100%", width: `${Math.min(100, (m.ca / (goal || 1)) * 100)}%`, background: m.color }} />
               </div>
+              {m.ca > 0 && <div style={{ fontSize: 11, color: C.greenLight, marginTop: 3 }}>Commission : {fcfa(m.commission)}</div>}
             </div>
           ))}
         </div>
@@ -1445,7 +1540,7 @@ function TabObjectif({ goal, setGoal, totalCA, totalCommission, pct, prospects, 
 }
 
 /* ---------------------------------- TAB: CRM ---------------------------------- */
-function TabCRM({ prospects, setProspects, totalCA, totalCommission, team, codes, agency, pricing, servicesCatalogue }) {
+function TabCRM({ prospects, setProspects, totalCA, totalCommission, team, codes, agency, pricing, servicesCatalogue, commissionRate }) {
   const [form, setForm] = useState({
     nom: "", prenom: "", whatsapp: "", email: "", adresse: "", quartier: "",
     dateInscription: new Date().toISOString().slice(0, 10),
@@ -1521,11 +1616,11 @@ function TabCRM({ prospects, setProspects, totalCA, totalCommission, team, codes
       <div style={{ display: "flex", gap: 10 }}>
         <Card style={{ flex: 1, textAlign: "center" }}>
           <div style={{ fontSize: 11, color: C.muted }}>CA encaissé</div>
-          <div style={{ fontWeight: 800, fontFamily: "Sora, sans-serif", color: C.goldLight }}>{fcfa(totalCA)}</div>
+          <div style={{ fontWeight: 800, fontFamily: "Baloo 2, sans-serif", color: C.goldLight }}>{fcfa(totalCA)}</div>
         </Card>
         <Card style={{ flex: 1, textAlign: "center" }}>
-          <div style={{ fontSize: 11, color: C.muted }}>Commission 25%</div>
-          <div style={{ fontWeight: 800, fontFamily: "Sora, sans-serif", color: C.greenLight }}>{fcfa(totalCommission)}</div>
+          <div style={{ fontSize: 11, color: C.muted }}>Commissions équipe</div>
+          <div style={{ fontWeight: 800, fontFamily: "Baloo 2, sans-serif", color: C.greenLight }}>{fcfa(totalCommission)}</div>
         </Card>
       </div>
 
@@ -1559,7 +1654,7 @@ function TabCRM({ prospects, setProspects, totalCA, totalCommission, team, codes
               )}
               <div style={{ fontSize: 13, fontWeight: 700, color: C.goldLight }}>{fcfa(p.montant)}</div>
             </div>
-            {Number(p.montant) > 0 && <div style={{ fontSize: 11, color: C.greenLight, marginTop: 4 }}>Commission : {fcfa(p.montant * 0.25)}</div>}
+            {Number(p.montant) > 0 && <div style={{ fontSize: 11, color: C.greenLight, marginTop: 4 }}>Commission ({memberRate(team, p.owner, commissionRate)}%) : {fcfa(commissionOf(p, team, commissionRate))}</div>}
 
             {expanded && (
               <div style={{ marginTop: 12, borderTop: `1px solid ${C.border}`, paddingTop: 12 }}>
@@ -2215,11 +2310,11 @@ function AdminDiagnostics() {
       <div style={{ display: "flex", gap: 10 }}>
         <Card style={{ flex: 1, textAlign: "center" }}>
           <div style={{ fontSize: 11, color: C.muted }}>Coût ce mois-ci</div>
-          <div style={{ fontWeight: 800, fontFamily: "Sora, sans-serif", color: C.goldLight }}>≈ {monthCost.toFixed(2)} $</div>
+          <div style={{ fontWeight: 800, fontFamily: "Baloo 2, sans-serif", color: C.goldLight }}>≈ {monthCost.toFixed(2)} $</div>
         </Card>
         <Card style={{ flex: 1, textAlign: "center" }}>
           <div style={{ fontSize: 11, color: C.muted }}>Coût cumulé</div>
-          <div style={{ fontWeight: 800, fontFamily: "Sora, sans-serif", color: C.greenLight }}>≈ {totalCost.toFixed(2)} $</div>
+          <div style={{ fontWeight: 800, fontFamily: "Baloo 2, sans-serif", color: C.greenLight }}>≈ {totalCost.toFixed(2)} $</div>
         </Card>
       </div>
 
@@ -2581,7 +2676,7 @@ function TabDispos({ dispos, setDispos, team }) {
 
         <Card style={{ textAlign: "center" }}>
           <div style={{ fontSize: 12, color: C.muted }}>Jours disponibles — {viewingMember?.name}</div>
-          <div style={{ fontFamily: "Sora, sans-serif", fontSize: 22, fontWeight: 800, color: C.text }}>{availableCount} / 30</div>
+          <div style={{ fontFamily: "Baloo 2, sans-serif", fontSize: 22, fontWeight: 800, color: C.text }}>{availableCount} / 30</div>
         </Card>
 
         <Card>
@@ -2655,7 +2750,7 @@ function TabOutils() {
         return (
           <Card key={group.cat}>
             <button onClick={() => setOpen(expanded ? null : group.cat)} style={{ background: "none", border: "none", color: C.text, width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", padding: 0 }}>
-              <span style={{ fontFamily: "Sora, sans-serif", fontWeight: 700, fontSize: 14 }}>{group.cat}</span>
+              <span style={{ fontFamily: "Baloo 2, sans-serif", fontWeight: 700, fontSize: 14 }}>{group.cat}</span>
               {expanded ? <ChevronDown size={16} color={C.gold} /> : <ChevronRight size={16} color={C.gold} />}
             </button>
             {expanded && (
@@ -2689,7 +2784,7 @@ function TabPlan() {
         return (
           <Card key={i}>
             <button onClick={() => setOpen(expanded ? -1 : i)} style={{ background: "none", border: "none", color: C.text, width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", padding: 0 }}>
-              <span style={{ fontFamily: "Sora, sans-serif", fontWeight: 700, fontSize: 14 }}>{w.title}</span>
+              <span style={{ fontFamily: "Baloo 2, sans-serif", fontWeight: 700, fontSize: 14 }}>{w.title}</span>
               {expanded ? <ChevronDown size={16} color={C.gold} /> : <ChevronRight size={16} color={C.gold} />}
             </button>
             {expanded && (
@@ -2764,7 +2859,7 @@ function ScriptLine({ label, text, color }) {
 }
 
 /* ---------------------------------- TAB: TRÉSORERIE ---------------------------------- */
-function TabTresorerie({ prospects, setProspects, expenses, setExpenses, totalCA, totalCommission, totalDepenses, beneficeNet, team, codes }) {
+function TabTresorerie({ prospects, setProspects, expenses, setExpenses, totalCA, totalCommission, totalDepenses, beneficeNet, team, codes, commissionRate }) {
   const [form, setForm] = useState({ label: "", categorie: DEPENSES_CATEGORIES[0], montant: "", addedBy: team[0]?.id || "" });
   const [catherineUnlocked, setCatherineUnlocked] = useState(false);
   const clientsPayants = prospects.filter(p => Number(p.montant) > 0);
@@ -2784,24 +2879,24 @@ function TabTresorerie({ prospects, setProspects, expenses, setExpenses, totalCA
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <Card style={{ textAlign: "center" }}>
             <div style={{ fontSize: 11, color: C.muted }}>Revenus (CRM)</div>
-            <div style={{ fontWeight: 800, fontFamily: "Sora, sans-serif", color: C.goldLight, fontSize: 15 }}>{fcfa(totalCA)}</div>
+            <div style={{ fontWeight: 800, fontFamily: "Baloo 2, sans-serif", color: C.goldLight, fontSize: 15 }}>{fcfa(totalCA)}</div>
           </Card>
           <Card style={{ textAlign: "center" }}>
             <div style={{ fontSize: 11, color: C.muted }}>Commissions équipe</div>
-            <div style={{ fontWeight: 800, fontFamily: "Sora, sans-serif", color: C.rustLight, fontSize: 15 }}>{fcfa(totalCommission)}</div>
+            <div style={{ fontWeight: 800, fontFamily: "Baloo 2, sans-serif", color: C.rustLight, fontSize: 15 }}>{fcfa(totalCommission)}</div>
           </Card>
           <Card style={{ textAlign: "center" }}>
             <div style={{ fontSize: 11, color: C.muted }}>Dépenses</div>
-            <div style={{ fontWeight: 800, fontFamily: "Sora, sans-serif", color: C.rustLight, fontSize: 15 }}>{fcfa(totalDepenses)}</div>
+            <div style={{ fontWeight: 800, fontFamily: "Baloo 2, sans-serif", color: C.rustLight, fontSize: 15 }}>{fcfa(totalDepenses)}</div>
           </Card>
           <Card style={{ textAlign: "center" }}>
             <div style={{ fontSize: 11, color: C.muted }}>Bénéfice net</div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4, fontWeight: 800, fontFamily: "Sora, sans-serif", color: beneficeNet >= 0 ? C.greenLight : C.rustLight, fontSize: 15 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4, fontWeight: 800, fontFamily: "Baloo 2, sans-serif", color: beneficeNet >= 0 ? C.greenLight : C.rustLight, fontSize: 15 }}>
               {beneficeNet >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />} {fcfa(beneficeNet)}
             </div>
           </Card>
         </div>
-        <div style={{ color: C.muted, fontSize: 11.5, marginTop: 6 }}>Bénéfice net = Revenus encaissés − Commissions (25%) − Dépenses. Recalculé automatiquement.</div>
+        <div style={{ color: C.muted, fontSize: 11.5, marginTop: 6 }}>Bénéfice net = Revenus encaissés − Commissions équipe − Dépenses. Recalculé automatiquement selon le pourcentage de chacun.</div>
       </div>
 
       <div>
@@ -2902,11 +2997,11 @@ function TabDettes({ dettes, setDettes, prospects }) {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <Card style={{ textAlign: "center" }}>
           <div style={{ fontSize: 11, color: C.muted }}>Total dû (impayé)</div>
-          <div style={{ fontWeight: 800, fontFamily: "Sora, sans-serif", color: C.goldLight, fontSize: 15 }}>{fcfa(totalDu)}</div>
+          <div style={{ fontWeight: 800, fontFamily: "Baloo 2, sans-serif", color: C.goldLight, fontSize: 15 }}>{fcfa(totalDu)}</div>
         </Card>
         <Card style={{ textAlign: "center" }}>
           <div style={{ fontSize: 11, color: C.muted }}>Échéances en retard</div>
-          <div style={{ fontWeight: 800, fontFamily: "Sora, sans-serif", color: enRetard > 0 ? C.rustLight : C.greenLight, fontSize: 15 }}>{enRetard}</div>
+          <div style={{ fontWeight: 800, fontFamily: "Baloo 2, sans-serif", color: enRetard > 0 ? C.rustLight : C.greenLight, fontSize: 15 }}>{enRetard}</div>
         </Card>
       </div>
 
@@ -2986,7 +3081,7 @@ function TabCopywriting() {
             return (
               <Card key={group.cat}>
                 <button onClick={() => setOpenHook(expanded ? null : group.cat)} style={{ background: "none", border: "none", color: C.text, width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", padding: 0 }}>
-                  <span style={{ fontFamily: "Sora, sans-serif", fontWeight: 700, fontSize: 14 }}>{group.cat} ({group.items.length})</span>
+                  <span style={{ fontFamily: "Baloo 2, sans-serif", fontWeight: 700, fontSize: 14 }}>{group.cat} ({group.items.length})</span>
                   {expanded ? <ChevronDown size={16} color={C.gold} /> : <ChevronRight size={16} color={C.gold} />}
                 </button>
                 {expanded && (
@@ -3013,7 +3108,7 @@ function TabCopywriting() {
             return (
               <Card key={s.title}>
                 <button onClick={() => setOpenScript(expanded ? null : i)} style={{ background: "none", border: "none", color: C.text, width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", padding: 0 }}>
-                  <span style={{ fontFamily: "Sora, sans-serif", fontWeight: 700, fontSize: 13.5 }}>{s.title}</span>
+                  <span style={{ fontFamily: "Baloo 2, sans-serif", fontWeight: 700, fontSize: 13.5 }}>{s.title}</span>
                   {expanded ? <ChevronDown size={16} color={C.gold} /> : <ChevronRight size={16} color={C.gold} />}
                 </button>
                 {expanded && (
@@ -3089,7 +3184,7 @@ function TabProspection({ prospection, setProspection, prospects, setProspects, 
           {DM_SCRIPTS.map(s => (
             <Card key={s.stage}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                <span style={{ fontFamily: "Sora, sans-serif", fontWeight: 700, fontSize: 13.5, color: C.gold }}>{s.stage}</span>
+                <span style={{ fontFamily: "Baloo 2, sans-serif", fontWeight: 700, fontSize: 13.5, color: C.gold }}>{s.stage}</span>
                 <button onClick={() => copyScript(s.stage, s.text)} style={{ ...iconBtn, display: "flex", alignItems: "center", gap: 5 }}>
                   <Copy size={12} /> {copiedStage === s.stage ? "Copié !" : "Copier"}
                 </button>
@@ -3658,7 +3753,7 @@ function TabFormation({ team, codes, guides, formationLiens }) {
           ))}
         </div>
       )}
-      <div style={{ fontFamily: "Sora, sans-serif", fontWeight: 800, fontSize: 17, marginBottom: 2 }}>Formation de {labels[activeId] || "—"}</div>
+      <div style={{ fontFamily: "Baloo 2, sans-serif", fontWeight: 800, fontSize: 17, marginBottom: 2 }}>Formation de {labels[activeId] || "—"}</div>
       <div style={{ color: C.muted, fontSize: 12, marginBottom: 12 }}>KBS DIGITAL AGENCY</div>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
@@ -3952,11 +4047,146 @@ function TabCaissePerso({ caisse, setCaisse }) {
   );
 }
 
-function TabAdministration({ section, caisse, setCaisse, team, setTeam, codes, setCodes, onResetAll, agency, setAgency, guides, setGuides, formationLiens, setFormationLiens, pricing, setPricing }) {
+/* ---------------------------------- TAB: ARCHIVES ---------------------------------- */
+// Historique fige, mois par mois. Chaque mois est archive automatiquement quand un
+// nouveau mois commence (voir buildSnapshot dans App). Consultation en lecture seule.
+function TabArchives({ archives, period, team }) {
+  const list = (archives || []).slice().sort((a, b) => b.period.localeCompare(a.period)); // plus recent en premier
+  const monthLabel = (ym) => {
+    const p = (ym || "").split("-");
+    if (p.length < 2) return ym || "—";
+    const d = new Date(Number(p[0]), Number(p[1]) - 1, 1).toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+    return d.charAt(0).toUpperCase() + d.slice(1);
+  };
+  const [openId, setOpenId] = useState(list[0]?.id || list[0]?.period || null);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <Card>
+        <Eyebrow>Archives mensuelles</Eyebrow>
+        <div style={{ color: C.muted, fontSize: 12.5, marginTop: 4 }}>
+          À chaque changement de mois, tout est mis de côté ici (clients &amp; CA, trésorerie &amp; dépenses, dettes, objectif atteint) puis les compteurs repartent à zéro. Appuie sur un mois pour revoir tout ce qui s'est passé, sans exception.
+        </div>
+        <div style={{ color: C.muted, fontSize: 11.5, marginTop: 6 }}>Mois en cours : <b style={{ color: C.goldLight }}>{monthLabel(period)}</b> (encore en direct, pas encore archivé).</div>
+      </Card>
+
+      {list.length === 0 && (
+        <Card style={{ textAlign: "center" }}>
+          <Archive size={26} color={C.muted} style={{ margin: "4px auto 8px", display: "block" }} />
+          <div style={{ color: C.muted, fontSize: 13 }}>Aucune archive pour l'instant. Le premier mois sera archivé automatiquement au changement de mois.</div>
+        </Card>
+      )}
+
+      {list.map(a => {
+        const key = a.id || a.period;
+        const open = openId === key;
+        const clients = a.clients || [];
+        const expenses = a.expenses || [];
+        const dettes = a.dettes || [];
+        return (
+          <Card key={key}>
+            <div onClick={() => setOpenId(open ? null : key)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}>
+              <div>
+                <div style={{ fontFamily: "Baloo 2, sans-serif", fontWeight: 800, fontSize: 16, textTransform: "capitalize" }}>{monthLabel(a.period)}</div>
+                <div style={{ fontSize: 11.5, color: C.muted }}>CA {fcfa(a.totalCA)} · {clients.length} client{clients.length > 1 ? "s" : ""}</div>
+              </div>
+              {open ? <ChevronDown size={18} color={C.gold} /> : <ChevronRight size={18} color={C.gold} />}
+            </div>
+
+            {open && (
+              <div style={{ marginTop: 12, borderTop: `1px solid ${C.border}`, paddingTop: 12, display: "flex", flexDirection: "column", gap: 14 }}>
+                {/* Résumé financier */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <ArchStat label="CA encaissé" value={fcfa(a.totalCA)} color={C.goldLight} />
+                  <ArchStat label={`Commissions (${a.commissionRate ?? "—"}%)`} value={fcfa(a.totalCommission)} color={C.greenLight} />
+                  <ArchStat label="Dépenses" value={fcfa(a.totalDepenses)} color={C.rustLight} />
+                  <ArchStat label="Bénéfice net" value={fcfa(a.beneficeNet)} color={a.beneficeNet >= 0 ? C.greenLight : C.rustLight} />
+                </div>
+                <div style={{ fontSize: 12, color: C.muted }}>Objectif atteint : <b style={{ color: C.goldLight }}>{a.pctObjectif}%</b> de {fcfa(a.goal)}</div>
+
+                {/* Par personne */}
+                {(a.byMember || []).some(m => m.ca > 0) && (
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: C.gold, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Par personne</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {(a.byMember || []).filter(m => m.ca > 0).map(m => (
+                        <div key={m.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5 }}>
+                          <span><span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 999, background: m.color, marginRight: 6 }} />{m.name} <span style={{ color: C.muted }}>· {m.rate}%</span></span>
+                          <span style={{ color: C.muted }}>{fcfa(m.ca)} → <span style={{ color: C.greenLight }}>{fcfa(m.commission)}</span></span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Clients du mois */}
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: C.gold, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Clients &amp; CA ({clients.length})</div>
+                  {clients.length === 0 && <div style={{ fontSize: 12, color: C.muted }}>Aucun client ce mois-là.</div>}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {clients.map(c => (
+                      <div key={c.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, background: C.cardAlt, borderRadius: 8, padding: "6px 10px" }}>
+                        <span>{c.prenom} {c.nom} <span style={{ color: C.muted }}>· {c.statut}</span></span>
+                        <span style={{ fontWeight: 700, color: C.goldLight }}>{fcfa(c.montant)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Dépenses du mois */}
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: C.gold, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Trésorerie — dépenses ({expenses.length})</div>
+                  {expenses.length === 0 && <div style={{ fontSize: 12, color: C.muted }}>Aucune dépense ce mois-là.</div>}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {expenses.map((e, i) => (
+                      <div key={e.id || i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, background: C.cardAlt, borderRadius: 8, padding: "6px 10px" }}>
+                        <span>{e.label || e.nom || e.description || "Dépense"}</span>
+                        <span style={{ fontWeight: 700, color: C.rustLight }}>{fcfa(e.montant)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Dettes du mois */}
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: C.gold, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Dettes &amp; rappels ({dettes.length})</div>
+                  {dettes.length === 0 && <div style={{ fontSize: 12, color: C.muted }}>Aucune dette ce mois-là.</div>}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {dettes.map((d, i) => (
+                      <div key={d.id || i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, background: C.cardAlt, borderRadius: 8, padding: "6px 10px" }}>
+                        <span>{d.clientNom || "Dette"} <span style={{ color: C.muted }}>{d.statut ? "· " + d.statut : ""}</span></span>
+                        <span style={{ fontWeight: 700, color: d.statut === "Payée" ? C.greenLight : C.goldLight }}>{fcfa(d.montantDu)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ fontSize: 10.5, color: C.muted, textAlign: "right" }}>Archivé le {a.closedAt ? new Date(a.closedAt).toLocaleDateString("fr-FR") : "—"}</div>
+              </div>
+            )}
+          </Card>
+        );
+      })}
+    </div>
+  );
+}
+
+function ArchStat({ label, value, color }) {
+  return (
+    <div style={{ background: C.cardAlt, borderRadius: 10, padding: "8px 10px" }}>
+      <div style={{ fontSize: 10.5, color: C.muted }}>{label}</div>
+      <div style={{ fontFamily: "Baloo 2, sans-serif", fontWeight: 800, fontSize: 14, color }}>{value}</div>
+    </div>
+  );
+}
+
+function TabAdministration({ section, caisse, setCaisse, team, setTeam, codes, setCodes, onResetAll, agency, setAgency, guides, setGuides, formationLiens, setFormationLiens, pricing, setPricing, commissionRate, setCommissionRate }) {
   const [adminUnlocked, setAdminUnlocked] = useState(false);
   const [form, setForm] = useState({ name: "", role: "", checklistText: "" });
   const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState({ name: "", role: "", checklistText: "", code: "" });
+  const [editForm, setEditForm] = useState({ name: "", role: "", checklistText: "", code: "", commissionPct: "" });
+  const [rateForm, setRateForm] = useState(commissionRate);
+  const [rateSaved, setRateSaved] = useState(false);
   const [codesForm, setCodesForm] = useState(codes);
   const [codesSaved, setCodesSaved] = useState(false);
   const [agencyForm, setAgencyForm] = useState(agency);
@@ -3975,6 +4205,7 @@ function TabAdministration({ section, caisse, setCaisse, team, setTeam, codes, s
     const color = TEAM_COLORS[team.length % TEAM_COLORS.length];
     const checklist = form.checklistText.split(",").map(s => s.trim()).filter(Boolean);
     setTeam([...team, { id, name: form.name, role: form.role || "Membre de l'équipe", color, code: autoCode(form.name),
+      commissionPct: commissionRate,
       checklist: checklist.length ? checklist : ["Vérifier les tâches du jour", "Mettre à jour son suivi", "Communiquer avec l'équipe"] }]);
     setForm({ name: "", role: "", checklistText: "" });
   }
@@ -3985,12 +4216,21 @@ function TabAdministration({ section, caisse, setCaisse, team, setTeam, codes, s
   }
   function startEdit(m) {
     setEditingId(m.id);
-    setEditForm({ name: m.name, role: m.role, checklistText: (m.checklist || []).join(", "), code: m.code || autoCode(m.name) });
+    setEditForm({ name: m.name, role: m.role, checklistText: (m.checklist || []).join(", "), code: m.code || autoCode(m.name),
+      commissionPct: m.commissionPct != null ? m.commissionPct : commissionRate });
   }
   function saveEdit(id) {
     const checklist = editForm.checklistText.split(",").map(s => s.trim()).filter(Boolean);
-    setTeam(team.map(m => m.id === id ? { ...m, name: editForm.name || m.name, role: editForm.role, code: editForm.code || m.code, checklist } : m));
+    const pctRaw = Number(editForm.commissionPct);
+    const pct = Number.isFinite(pctRaw) && editForm.commissionPct !== "" ? Math.max(0, Math.min(100, pctRaw)) : commissionRate;
+    setTeam(team.map(m => m.id === id ? { ...m, name: editForm.name || m.name, role: editForm.role, code: editForm.code || m.code, commissionPct: pct, checklist } : m));
     setEditingId(null);
+  }
+  async function saveRate() {
+    const v = Math.max(0, Math.min(100, Number(rateForm) || 0));
+    setCommissionRate(v);
+    setRateSaved(true);
+    setTimeout(() => setRateSaved(false), 2000);
   }
   async function saveCodes() {
     setCodes(codesForm);
@@ -4049,6 +4289,25 @@ function TabAdministration({ section, caisse, setCaisse, team, setTeam, codes, s
 
       {section === "adminEquipe" && (<>
       <div>
+        <H2>Taux de commission</H2>
+        <Card style={{ borderColor: C.gold }}>
+          <Eyebrow>Taux officiel de l'agence</Eyebrow>
+          <div style={{ color: C.muted, fontSize: 12, margin: "4px 0 10px" }}>
+            C'est le pourcentage appliqué par défaut à tous les membres. Tu peux le changer quand tu veux — tous les calculs de commission se recalculent automatiquement.
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <Percent size={16} color={C.gold} />
+            <input type="number" min="0" max="100" value={rateForm}
+              onChange={e => setRateForm(e.target.value)}
+              style={{ ...inputStyle, width: 100 }} />
+            <span style={{ fontSize: 13, color: C.muted }}>%</span>
+            <button onClick={saveRate} style={{ ...btnGold, flex: 1 }}><Save size={14} /> {rateSaved ? "Enregistré ✓" : "Enregistrer le taux"}</button>
+          </div>
+          <div style={{ color: C.muted, fontSize: 11, marginTop: 8 }}>Taux actuel : <b style={{ color: C.goldLight }}>{commissionRate}%</b>. Pour donner un pourcentage différent à une personne précise, modifie sa fiche ci-dessous (crayon).</div>
+        </Card>
+      </div>
+
+      <div>
         <H2>Équipe actuelle ({team.length})</H2>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {team.map(m => {
@@ -4061,6 +4320,7 @@ function TabAdministration({ section, caisse, setCaisse, team, setTeam, codes, s
                     <div>
                       <div style={{ fontWeight: 700, fontSize: 13.5 }}>{m.name}</div>
                       <div style={{ fontSize: 11.5, color: C.muted }}>{m.role}</div>
+                      <div style={{ fontSize: 11, color: C.greenLight, marginTop: 2, fontWeight: 700 }}>Commission : {memberRate(team, m.id, commissionRate)}%</div>
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
@@ -4076,6 +4336,11 @@ function TabAdministration({ section, caisse, setCaisse, team, setTeam, codes, s
                     <input placeholder="Nom" value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })} style={inputStyle} />
                     <input placeholder="Rôle / statut" value={editForm.role} onChange={e => setEditForm({ ...editForm, role: e.target.value })} style={inputStyle} />
                     <textarea placeholder="Checklist quotidienne (séparée par des virgules)" value={editForm.checklistText} onChange={e => setEditForm({ ...editForm, checklistText: e.target.value })} style={{ ...inputStyle, minHeight: 60, resize: "vertical" }} />
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <Percent size={14} color={C.muted} />
+                      <input type="number" min="0" max="100" placeholder={`Commission (défaut ${commissionRate}%)`} value={editForm.commissionPct} onChange={e => setEditForm({ ...editForm, commissionPct: e.target.value })} style={{ ...inputStyle, flex: 1 }} />
+                      <span style={{ fontSize: 13, color: C.muted }}>%</span>
+                    </div>
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                       <KeyRound size={14} color={C.muted} />
                       <CodeInput placeholder="Code personnel (checklist)" value={editForm.code} onChange={e => setEditForm({ ...editForm, code: e.target.value.toUpperCase() })} style={{ flex: 1 }} />
@@ -4217,7 +4482,7 @@ function TabAdministration({ section, caisse, setCaisse, team, setTeam, codes, s
           <Card key={m.id} style={{ marginBottom: 14 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
               <div style={{ width: 10, height: 10, borderRadius: 999, background: m.color }} />
-              <div style={{ fontFamily: "Sora, sans-serif", fontWeight: 800, fontSize: 15, color: C.goldLight }}>{m.name}</div>
+              <div style={{ fontFamily: "Baloo 2, sans-serif", fontWeight: 800, fontSize: 15, color: C.goldLight }}>{m.name}</div>
               <div style={{ fontSize: 11, color: C.muted }}>· code {m.code}</div>
             </div>
 
@@ -4257,7 +4522,7 @@ function TabAdministration({ section, caisse, setCaisse, team, setTeam, codes, s
         <H2>Zone dangereuse</H2>
         <Card style={{ borderColor: C.rust }}>
           <Eyebrow>Réinitialiser toutes les données</Eyebrow>
-          <div style={{ fontSize: 12.5, color: C.muted, marginTop: 4 }}>Efface tous les clients, dépenses, dettes, prospections, tâches Kanban, coches de checklist, disponibilités, devis et liens — remet l'objectif à 250 000 FCFA. L'équipe et les codes d'accès ne sont pas touchés. Action irréversible.</div>
+          <div style={{ fontSize: 12.5, color: C.muted, marginTop: 4 }}>Efface tous les clients, dépenses, dettes, prospections, tâches Kanban, coches de checklist, disponibilités, devis et liens — remet l'objectif à 250 000 FCFA. L'équipe et les codes d'accès ne sont pas touchés. <b style={{ color: C.greenLight }}>Avant l'effacement, le mois en cours (clients &amp; CA, trésorerie, dettes, objectif) est automatiquement sauvegardé dans les Archives</b> — tu pourras toujours le reconsulter. Le reste de l'action est irréversible.</div>
           {!resetStep ? (
             <button onClick={() => setResetStep(true)} style={{ ...iconBtn, marginTop: 10, color: C.rustLight, borderColor: C.rust, padding: "8px 12px" }}>
               <RefreshCw size={13} /> Tout réinitialiser
