@@ -258,7 +258,7 @@ const WEEKS = [
   { title: "Semaine 4 — Optimisation & encaissement", tasks: [
     "Sacko : analyser les statistiques des vidéos avec le CEO.",
     "Catherine : faire le point trésorerie, vérifier si l'objectif 250 000 FCFA est atteint.",
-    "CEO : distribuer les premières commissions de l'équipe (selon le taux officiel).",
+    "CEO : distribuer les premières commissions individuelles (chaque membre touche son % sur ses propres ventes).",
   ]},
 ];
 
@@ -1608,13 +1608,7 @@ function TabObjectif({ goal, setGoal, totalCA, totalCommission, pct, prospects, 
       </Card>
 
       <Card>
-        <Eyebrow>Commission d'équipe (taux officiel {commissionRate}%)</Eyebrow>
-        <div style={{ fontFamily: "Baloo 2, sans-serif", fontSize: 24, fontWeight: 800, color: C.greenLight }}>{fcfa(totalCommission)}</div>
-        <div style={{ color: C.muted, fontSize: 12.5, marginTop: 2 }}>Calculée automatiquement sur le CA encaissé, selon le pourcentage de chaque personne. Modifiable dans Administration → Équipe.</div>
-      </Card>
-
-      <Card>
-        <Eyebrow>Performance par personne</Eyebrow>
+        <Eyebrow>Performance par personne — taux officiel {commissionRate}%</Eyebrow>
         <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 4 }}>
           {perPerson.map(m => (
             <div key={m.id}>
@@ -1714,7 +1708,7 @@ function TabCRM({ prospects, setProspects, totalCA, totalCommission, team, codes
           <div style={{ fontWeight: 800, fontFamily: "Baloo 2, sans-serif", color: C.goldLight }}>{fcfa(totalCA)}</div>
         </Card>
         <Card style={{ flex: 1, textAlign: "center" }}>
-          <div style={{ fontSize: 11, color: C.muted }}>Commissions équipe</div>
+          <div style={{ fontSize: 11, color: C.muted }}>Total commissions (par membre)</div>
           <div style={{ fontWeight: 800, fontFamily: "Baloo 2, sans-serif", color: C.greenLight }}>{fcfa(totalCommission)}</div>
         </Card>
       </div>
@@ -2979,7 +2973,7 @@ function TabTresorerie({ prospects, setProspects, expenses, setExpenses, totalCA
             <div style={{ fontWeight: 800, fontFamily: "Baloo 2, sans-serif", color: C.goldLight, fontSize: 15 }}>{fcfa(totalCA)}</div>
           </Card>
           <Card style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 11, color: C.muted }}>Commissions équipe</div>
+            <div style={{ fontSize: 11, color: C.muted }}>Total commissions (par membre)</div>
             <div style={{ fontWeight: 800, fontFamily: "Baloo 2, sans-serif", color: C.rustLight, fontSize: 15 }}>{fcfa(totalCommission)}</div>
           </Card>
           <Card style={{ textAlign: "center" }}>
@@ -2993,7 +2987,7 @@ function TabTresorerie({ prospects, setProspects, expenses, setExpenses, totalCA
             </div>
           </Card>
         </div>
-        <div style={{ color: C.muted, fontSize: 11.5, marginTop: 6 }}>Bénéfice net = Revenus encaissés − Commissions équipe − Dépenses. Recalculé automatiquement selon le pourcentage de chacun.</div>
+        <div style={{ color: C.muted, fontSize: 11.5, marginTop: 6 }}>Bénéfice net = Revenus encaissés − Total des commissions individuelles − Dépenses. Chaque membre touche son propre pourcentage sur ses ventes ; il n'y a pas de commission d'équipe.</div>
       </div>
 
       <div>
