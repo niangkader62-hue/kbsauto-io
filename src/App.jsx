@@ -18,6 +18,26 @@ const supabase = createClient(
   "sb_publishable_olyJ2hEstrKN7KR4v4mNaQ_sYXVjw04"
 );
 
+/* --- SaaS multi-entreprises : chaque compte a son espace de donnees isole. ---
+   Toutes les cles de kbs_storage sont prefixees par l'espace du compte connecte
+   (ex. "org:<uid>:kbs:prospects"). ORG_PREFIX vide = aucun compte (ne doit pas
+   arriver une fois la connexion obligatoire). Ainsi les donnees d'une entreprise
+   ne peuvent jamais apparaitre chez une autre. */
+let ORG_PREFIX = "";
+function setOrgPrefix(uid) { ORG_PREFIX = uid ? `org:${uid}:` : ""; }
+function orgKey(key) { return ORG_PREFIX + key; }
+
+// Duree de l'essai gratuit pour un nouveau compte.
+const TRIAL_DAYS = 7;
+// Un compte a acces si son abonnement OU son essai n'est pas encore expire.
+function isAccountActive(meta) {
+  if (!meta) return false;
+  const now = Date.now();
+  if (meta.subEnd && new Date(meta.subEnd).getTime() > now) return true;
+  if (meta.trialEnd && new Date(meta.trialEnd).getTime() > now) return true;
+  return false;
+}
+
 /* ---------------------------------- PALETTE ---------------------------------- */
 const C = {
   bg: "var(--c-bg)", card: "var(--c-card)", cardAlt: "var(--c-cardAlt)", border: "var(--c-border)",
@@ -197,7 +217,14 @@ const DEFAULT_PRESTATIONS = [
   { name: "Création de SaaS / Application", price: "À partir de 300 000 FCFA" },
 ];
 
-const DEFAULT_PRICING = { packs: DEFAULT_PACKS, formations: DEFAULT_FORMATIONS, prestations: DEFAULT_PRESTATIONS };
+// Formules d'abonnement a l'application (SaaS). PRIX PROVISOIRES — a confirmer par le CEO.
+const DEFAULT_ABONNEMENTS = [
+  { id: "m1", label: "1 mois", price: 35000, note: null },
+  { id: "m6", label: "6 mois", price: 180000, note: "Économise ~14 %" },
+  { id: "y1", label: "1 an", price: 300000, note: "Le plus avantageux" },
+];
+
+const DEFAULT_PRICING = { packs: DEFAULT_PACKS, formations: DEFAULT_FORMATIONS, prestations: DEFAULT_PRESTATIONS, abonnements: DEFAULT_ABONNEMENTS };
 
 
 const AI_TOOLS = [
@@ -870,7 +897,7 @@ const ACADEMIE = [
 /* ---------------------------------- STORAGE HELPERS (SUPABASE) ---------------------------------- */
 async function loadShared(key, fallback) {
   try {
-    const { data, error } = await supabase.from("kbs_storage").select("value").eq("key", key).maybeSingle();
+    const { data, error } = await supabase.from("kbs_storage").select("value").eq("key", orgKey(key)).maybeSingle();
     if (error || !data) return fallback;
     return data.value;
   } catch { return fallback; }
@@ -880,7 +907,7 @@ async function loadShared(key, fallback) {
 // alors que rien n'etait ecrit dans la base.
 async function saveShared(key, value) {
   try {
-    const { error } = await supabase.from("kbs_storage").upsert({ key, value, updated_at: new Date().toISOString() });
+    const { error } = await supabase.from("kbs_storage").upsert({ key: orgKey(key), value, updated_at: new Date().toISOString() });
     if (error) return error.message || "Erreur d'enregistrement";
     return null;
   } catch (e) {
@@ -904,7 +931,7 @@ async function saveDiagnostic(clientId, value) {
 // Charge tous les diagnostics (pour l'onglet Administration).
 async function loadAllDiagnostics() {
   try {
-    const { data, error } = await supabase.from("kbs_storage").select("key,value").like("key", "diagnostic:%");
+    const { data, error } = await supabase.from("kbs_storage").select("key,value").like("key", orgKey("diagnostic:") + "%");
     if (error || !data) return [];
     return data.map(r => r.value).filter(Boolean);
   } catch { return []; }
@@ -1143,6 +1170,10 @@ export default function App() {
   const [tab, setTab] = useState("objectif");
   const [loaded, setLoaded] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
+  // Compte de l'entreprise (SaaS) : session Supabase Auth + infos abonnement/essai.
+  const [authReady, setAuthReady] = useState(false);
+  const [session, setSession] = useState(null);
+  const [orgMeta, setOrgMeta] = useState(null);
 
   const [team, setTeam] = useState(DEFAULT_TEAM);
   const [goal, setGoal] = useState(250000);
@@ -1172,8 +1203,50 @@ export default function App() {
   const tabRef = useRef(tab);
   useEffect(() => { tabRef.current = tab; }, [tab]);
 
+  // Suivi de la session (connexion / deconnexion du compte entreprise).
   useEffect(() => {
+    let alive = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!alive) return;
+      const s = data.session;
+      setOrgPrefix(s?.user?.id || "");
+      setSession(s);
+      setAuthReady(true);
+    }).catch(() => { if (alive) setAuthReady(true); });
+    const { data: authSub } = supabase.auth.onAuthStateChange((_evt, s) => {
+      setOrgPrefix(s?.user?.id || "");
+      setSession(s);
+      if (!s) { setLoaded(false); setUnlocked(false); setOrgMeta(null); }
+    });
+    return () => { alive = false; try { authSub?.subscription?.unsubscribe?.(); } catch (e) {} };
+  }, []);
+
+  async function signOut() {
+    try { await supabase.auth.signOut(); } catch (e) {}
+    setOrgPrefix("");
+    setSession(null); setLoaded(false); setUnlocked(false); setOrgMeta(null);
+  }
+
+  useEffect(() => {
+    if (!session?.user?.id) return;
+    setOrgPrefix(session.user.id);
+    setLoaded(false);
     (async () => {
+      // Infos du compte : nom, debut d'essai (7 jours), abonnement. Cree si absent.
+      let meta = await loadShared("kbs:orgMeta", null);
+      if (!meta) {
+        meta = {
+          name: session.user.email || "Mon entreprise",
+          email: session.user.email || "",
+          createdAt: new Date().toISOString(),
+          trialEnd: new Date(Date.now() + TRIAL_DAYS * 86400000).toISOString(),
+          plan: "trial",   // trial | active | expired
+          subEnd: null,    // date de fin d'abonnement paye
+        };
+        await saveShared("kbs:orgMeta", meta);
+      }
+      setOrgMeta(meta);
+
       // Filet de securite : tout membre enregistre sans code personnel en recoit un
       // automatiquement, sinon sa checklist et sa Formation resteraient inaccessibles.
       const loadedRate = await loadShared("kbs:commissionRate", DEFAULT_COMMISSION_RATE);
@@ -1206,7 +1279,8 @@ export default function App() {
       setPeriod(await loadShared("kbs:period", ""));
       setLoaded(true);
     })();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.id]);
 
   // Enregistrement centralise : toute panne d'ecriture devient visible a l'ecran
   // au lieu d'etre ignoree en silence.
@@ -1413,8 +1487,14 @@ export default function App() {
     <div style={{ minHeight: "100vh", background: C.bg, color: C.text, fontFamily: "Nunito, sans-serif" }}>
       <style>{FONT_IMPORT}</style>
 
-      {!loaded ? (
+      {!authReady ? (
         <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: C.muted, fontSize: 13 }}>Chargement…</div>
+      ) : !session ? (
+        <AuthScreen />
+      ) : !loaded ? (
+        <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: C.muted, fontSize: 13 }}>Chargement…</div>
+      ) : !isAccountActive(orgMeta) ? (
+        <SubscriptionGate meta={orgMeta} pricing={pricing} onSignOut={signOut} />
       ) : !unlocked ? (
         <LoginScreen onUnlock={() => setUnlocked(true)} codes={codes} />
       ) : (
@@ -1430,7 +1510,7 @@ export default function App() {
           </div>
           <div style={{ color: C.muted, fontSize: 12.5, marginTop: 2, marginLeft: 44 }}>KBS Digital Agency — QG de l'équipe</div>
         </div>
-        <button onClick={() => setUnlocked(false)} style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: `1px solid ${C.border}`, borderRadius: 8, color: C.muted, padding: "6px 10px", fontSize: 12, cursor: "pointer", flexShrink: 0 }}>
+        <button onClick={signOut} style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: `1px solid ${C.border}`, borderRadius: 8, color: C.muted, padding: "6px 10px", fontSize: 12, cursor: "pointer", flexShrink: 0 }}>
           <LogOut size={13} /> Déconnexion
         </button>
       </div>
@@ -1533,6 +1613,96 @@ export default function App() {
       </div>
       </div>
       )}
+    </div>
+  );
+}
+
+/* ---------------------------------- COMPTE ENTREPRISE (SaaS) ---------------------------------- */
+// Inscription / connexion d'une entreprise. Chaque compte = un espace isole.
+function AuthScreen() {
+  const [mode, setMode] = useState("login");   // login | signup
+  const [email, setEmail] = useState("");
+  const [pwd, setPwd] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
+
+  async function submit() {
+    setError(""); setInfo("");
+    if (!email.trim() || !pwd) { setError("Entre ton email et ton mot de passe."); return; }
+    if (mode === "signup" && pwd.length < 6) { setError("Mot de passe : 6 caractères minimum."); return; }
+    setBusy(true);
+    try {
+      if (mode === "signup") {
+        const { data, error } = await supabase.auth.signUp({ email: email.trim(), password: pwd });
+        if (error) { setError(traduireErreur(error.message)); }
+        else if (!data.session) { setInfo("Compte créé ! Vérifie ta boîte mail pour confirmer ton adresse, puis connecte-toi."); setMode("login"); }
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: pwd });
+        if (error) setError(traduireErreur(error.message));
+      }
+    } catch (e) { setError("Connexion impossible. Réessaie."); }
+    setBusy(false);
+  }
+
+  function traduireErreur(msg) {
+    const m = (msg || "").toLowerCase();
+    if (m.includes("invalid login")) return "Email ou mot de passe incorrect.";
+    if (m.includes("already registered") || m.includes("already been registered")) return "Cet email a déjà un compte. Connecte-toi.";
+    if (m.includes("email not confirmed")) return "Confirme d'abord ton email (lien reçu par mail).";
+    return msg || "Une erreur est survenue.";
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24, textAlign: "center" }}>
+      <img src={`data:image/png;base64,${LOGO_B64}`} alt="KBSAUTO" style={{ width: 76, height: 76, borderRadius: 18, marginBottom: 16, boxShadow: `0 0 0 1px ${C.border}` }} />
+      <div style={{ fontFamily: "Baloo 2, sans-serif", fontWeight: 800, fontSize: 24, marginBottom: 2 }}>KBSAUTO</div>
+      <div style={{ color: C.muted, fontSize: 13, marginBottom: 4 }}>Le QG de gestion de ton entreprise</div>
+      <div style={{ color: C.goldLight, fontSize: 12.5, marginBottom: 20, fontWeight: 700 }}>7 jours d'essai gratuit</div>
+
+      <div style={{ width: "100%", maxWidth: 340, display: "flex", flexDirection: "column", gap: 10 }}>
+        <input type="email" inputMode="email" autoComplete="email" placeholder="Ton email" value={email}
+          onChange={e => setEmail(e.target.value)} style={inputStyle} />
+        <input type="password" autoComplete={mode === "signup" ? "new-password" : "current-password"} placeholder="Mot de passe" value={pwd}
+          onChange={e => setPwd(e.target.value)} onKeyDown={e => { if (e.key === "Enter") submit(); }} style={inputStyle} />
+        <button onClick={submit} disabled={busy} style={{ ...btnGold, padding: 12, marginTop: 2 }}>
+          {busy ? "..." : (mode === "signup" ? "Créer mon compte" : "Se connecter")}
+        </button>
+        {error && <div style={{ color: C.rustLight, fontSize: 12 }}>{error}</div>}
+        {info && <div style={{ color: C.greenLight, fontSize: 12 }}>{info}</div>}
+        <button onClick={() => { setMode(mode === "signup" ? "login" : "signup"); setError(""); setInfo(""); }}
+          style={{ background: "none", border: "none", color: C.muted, fontSize: 12.5, cursor: "pointer", marginTop: 4, textDecoration: "underline" }}>
+          {mode === "signup" ? "J'ai déjà un compte — me connecter" : "Nouveau ? Créer un compte (essai 7 jours)"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Ecran affiche quand l'essai est termine et l'abonnement expire / absent.
+function SubscriptionGate({ meta, pricing, onSignOut }) {
+  const plans = (pricing && pricing.abonnements) ? pricing.abonnements : DEFAULT_ABONNEMENTS;
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24, textAlign: "center" }}>
+      <img src={`data:image/png;base64,${LOGO_B64}`} alt="KBSAUTO" style={{ width: 64, height: 64, borderRadius: 16, marginBottom: 14 }} />
+      <div style={{ fontFamily: "Baloo 2, sans-serif", fontWeight: 800, fontSize: 22, marginBottom: 4 }}>Ton essai est terminé</div>
+      <div style={{ color: C.muted, fontSize: 13, maxWidth: 340, marginBottom: 18 }}>
+        Choisis une formule pour continuer à utiliser KBSAUTO. Le paiement en ligne (Wave, Orange Money, carte) arrive très bientôt — en attendant, contacte KBS pour activer ton accès.
+      </div>
+      <div style={{ width: "100%", maxWidth: 360, display: "flex", flexDirection: "column", gap: 10 }}>
+        {plans.map(p => (
+          <div key={p.id} style={{ border: `1px solid ${C.border}`, borderRadius: 14, padding: 14, background: C.card, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ textAlign: "left" }}>
+              <div style={{ fontWeight: 800, fontSize: 14 }}>{p.label}</div>
+              {p.note && <div style={{ fontSize: 11.5, color: C.greenLight }}>{p.note}</div>}
+            </div>
+            <div style={{ fontFamily: "Baloo 2, sans-serif", fontWeight: 800, fontSize: 16, color: C.goldLight }}>{fcfa(p.price)}</div>
+          </div>
+        ))}
+      </div>
+      <button onClick={onSignOut} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 8, color: C.muted, padding: "8px 14px", fontSize: 12.5, cursor: "pointer", marginTop: 20, display: "flex", alignItems: "center", gap: 6 }}>
+        <LogOut size={13} /> Se déconnecter
+      </button>
     </div>
   );
 }
